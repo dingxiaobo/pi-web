@@ -372,13 +372,35 @@ export function AppShell() {
     }
   }, [selectedSession, router]);
 
-  const handleOpenFile = useCallback((filePath: string, fileName: string, sourceSessionId?: string | null) => {
+  const handleOpenFile = useCallback((
+    filePath: string,
+    fileName: string,
+    options?: { sourceSessionId?: string | null; modeHint?: "diff" },
+  ) => {
+    const sourceSessionId = options?.sourceSessionId;
+    const modeHint = options?.modeHint;
     const tabId = `file:${filePath}`;
     setFileTabs((prev) => {
       const existing = prev.find((t) => t.id === tabId);
-      if (!existing) return [...prev, { id: tabId, label: fileName, filePath, sourceSessionId }];
-      if (!sourceSessionId || existing.sourceSessionId === sourceSessionId) return prev;
-      return prev.map((t) => t.id === tabId ? { ...t, sourceSessionId } : t);
+      if (!existing) {
+        return [...prev, {
+          id: tabId,
+          label: fileName,
+          filePath,
+          sourceSessionId,
+          initialDisplayMode: modeHint,
+        }];
+      }
+      const sourceUnchanged = !sourceSessionId || existing.sourceSessionId === sourceSessionId;
+      const modeUnchanged = !modeHint || existing.initialDisplayMode === modeHint;
+      if (sourceUnchanged && modeUnchanged) return prev;
+      return prev.map((t) => {
+        if (t.id !== tabId) return t;
+        const next: Tab = { ...t };
+        if (sourceSessionId) next.sourceSessionId = sourceSessionId;
+        if (modeHint) next.initialDisplayMode = modeHint;
+        return next;
+      });
     });
     setActiveFileTabId(tabId);
     setRightPanelOpen(true);
@@ -387,7 +409,7 @@ export function AppShell() {
   }, [isMobile]);
 
   const handleOpenLinkedFile = useCallback((filePath: string) => {
-    handleOpenFile(filePath, getFileName(filePath), selectedSession?.id ?? null);
+    handleOpenFile(filePath, getFileName(filePath), { sourceSessionId: selectedSession?.id ?? null });
   }, [handleOpenFile, selectedSession?.id]);
 
   const handleCloseFileTab = useCallback((tabId: string) => {
@@ -1239,10 +1261,11 @@ export function AppShell() {
               cwd={activeCwd ?? undefined}
               sourceSessionId={activeFileTab.sourceSessionId}
               gitRefreshKey={explorerRefreshKey}
+              initialDisplayMode={activeFileTab.initialDisplayMode}
               onOpenFile={(filePath) => handleOpenFile(
                 filePath,
                 getFileName(filePath),
-                activeFileTab.sourceSessionId,
+                { sourceSessionId: activeFileTab.sourceSessionId },
               )}
             />
           ) : (

@@ -12,6 +12,65 @@ declare global {
   }
 }
 
+function ToolbarIconButton({
+  onClick,
+  title,
+  disabled,
+  skipHover,
+  color,
+  background = "none",
+  marginRight,
+  ariaPressed,
+  children,
+}: {
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+  skipHover?: boolean;
+  color: string;
+  background?: string;
+  marginRight?: number;
+  ariaPressed?: boolean;
+  children: ReactNode;
+}) {
+  const enter = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled || skipHover) return;
+    e.currentTarget.style.color = "var(--text-muted)";
+    e.currentTarget.style.background = "var(--bg-hover)";
+  };
+  const leave = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (disabled || skipHover) return;
+    e.currentTarget.style.color = color;
+    e.currentTarget.style.background = background;
+  };
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      aria-pressed={ariaPressed}
+      style={{
+        position: "relative",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: 26, height: 26, padding: 0, marginRight,
+        background,
+        border: "none",
+        color,
+        cursor: disabled ? "default" : "pointer",
+        borderRadius: 5,
+        flexShrink: 0,
+        opacity: disabled ? 0.6 : 1,
+        transition: "color 0.3s, background 0.3s",
+      }}
+      onMouseEnter={enter}
+      onMouseLeave={leave}
+    >
+      {children}
+    </button>
+  );
+}
+
 interface Props {
   selectedSessionId: string | null;
   onSelectSession: (session: SessionInfo, isRestore?: boolean) => void;
@@ -23,7 +82,7 @@ interface Props {
   onSessionDeleted?: (sessionId: string) => void;
   selectedCwd?: string | null;
   onCwdChange?: (cwd: string | null, projectRoot?: string | null) => void;
-  onOpenFile?: (filePath: string, fileName: string) => void;
+  onOpenFile?: (filePath: string, fileName: string, options?: { sourceSessionId?: string | null; modeHint?: "diff" }) => void;
   explorerRefreshKey?: number;
   onExplorerRefresh?: () => void;
   onAtMention?: (relativePath: string, isDir: boolean) => void;
@@ -349,6 +408,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [explorerOpen, setExplorerOpen] = useState(true);
   const [explorerKey, setExplorerKey] = useState(0);
   const [explorerUploadBusy, setExplorerUploadBusy] = useState(false);
+  const [changesCount, setChangesCount] = useState(0);
+  const [changesCollapsed, setChangesCollapsed] = useState(true);
   const [sessionRefreshDone, setSessionRefreshDone] = useState(false);
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
   const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(() => new Set());
@@ -1503,7 +1564,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             flexDirection: "column",
             flex: explorerOpen ? "1 1 0" : "0 0 auto",
             minHeight: 0,
-            overflow: "hidden",
+            overflow: "visible",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
@@ -1535,35 +1596,39 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
               </svg>
               Explorer
             </button>
+            {explorerOpen && changesCount > 0 && (
+              <ToolbarIconButton
+                onClick={() => setChangesCollapsed((v) => !v)}
+                title={`${changesCount} changed file${changesCount === 1 ? "" : "s"}`}
+                ariaPressed={!changesCollapsed}
+                color={changesCollapsed ? "var(--text-dim)" : "var(--accent)"}
+                background={changesCollapsed ? "none" : "var(--bg-hover)"}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M3 12h6" />
+                  <path d="M15 12h6" />
+                </svg>
+                <span style={{ position: "absolute", top: -3, right: -3, minWidth: 13, height: 13, padding: "0 3px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 7, background: "var(--accent)", color: "var(--bg)", fontSize: 9, fontWeight: 700, lineHeight: 1 }}>
+                  {changesCount}
+                </span>
+              </ToolbarIconButton>
+            )}
             {explorerOpen && (
-              <button
+              <ToolbarIconButton
                 onClick={() => fileExplorerRef.current?.openUploadPicker()}
                 disabled={explorerUploadBusy}
                 title="Upload files to project root"
-                aria-label="Upload files"
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 26, height: 26, padding: 0,
-                  background: "none",
-                  border: "none",
-                  color: "var(--text-dim)",
-                  cursor: explorerUploadBusy ? "default" : "pointer",
-                  borderRadius: 5,
-                  flexShrink: 0,
-                  opacity: explorerUploadBusy ? 0.6 : 1,
-                  transition: "color 0.3s, background 0.3s",
-                }}
-                onMouseEnter={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-                onMouseLeave={(e) => { if (explorerUploadBusy) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+                color="var(--text-dim)"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                   <path d="m17 8-5-5-5 5" />
                   <path d="M12 3v12" />
                 </svg>
-              </button>
+              </ToolbarIconButton>
             )}
-            <button
+            <ToolbarIconButton
               onClick={() => {
                 if (onExplorerRefresh) onExplorerRefresh();
                 else setExplorerKey((k) => k + 1);
@@ -1572,19 +1637,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 explorerRefreshTimerRef.current = setTimeout(() => setExplorerRefreshDone(false), 2000);
               }}
               title="Refresh explorer"
-              style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 26, height: 26, padding: 0, marginRight: 6,
-                background: explorerRefreshDone ? "rgba(74,222,128,0.18)" : "none",
-                border: "none",
-                color: explorerRefreshDone ? "#4ade80" : "var(--text-dim)",
-                cursor: "pointer",
-                borderRadius: 5,
-                flexShrink: 0,
-                transition: "color 0.3s, background 0.3s",
-              }}
-              onMouseEnter={(e) => { if (explorerRefreshDone) return; e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "var(--bg-hover)"; }}
-              onMouseLeave={(e) => { if (explorerRefreshDone) return; e.currentTarget.style.color = "var(--text-dim)"; e.currentTarget.style.background = "none"; }}
+              skipHover={explorerRefreshDone}
+              color={explorerRefreshDone ? "#4ade80" : "var(--text-dim)"}
+              background={explorerRefreshDone ? "rgba(74,222,128,0.18)" : "none"}
+              marginRight={6}
             >
               {explorerRefreshDone ? (
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1596,7 +1652,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                   <path d="M3 3v5h5" />
                 </svg>
               )}
-            </button>
+            </ToolbarIconButton>
           </div>
           {explorerOpen && (
             <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
@@ -1608,6 +1664,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 onAtMention={onAtMention}
                 onAtMentions={onAtMentions}
                 onUploadBusyChange={setExplorerUploadBusy}
+                changesCollapsed={changesCollapsed}
+                onChangesCountChange={setChangesCount}
               />
             </div>
           )}

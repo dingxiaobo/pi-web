@@ -29,6 +29,7 @@ interface Props {
   sourceSessionId?: string | null;
   onOpenFile?: (filePath: string) => void;
   gitRefreshKey?: number;
+  initialDisplayMode?: DisplayMode;
 }
 
 interface FileData {
@@ -701,7 +702,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
   );
 }
 
-export function FileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefreshKey }: Props) {
+export function FileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefreshKey, initialDisplayMode }: Props) {
   if (isImagePath(filePath)) {
     return <ImageViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;
   }
@@ -711,10 +712,10 @@ export function FileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefr
   if (isDocumentPreviewPath(filePath)) {
     return <DocumentViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} />;
   }
-  return <TextFileViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} onOpenFile={onOpenFile} gitRefreshKey={gitRefreshKey} />;
+  return <TextFileViewer filePath={filePath} cwd={cwd} sourceSessionId={sourceSessionId} onOpenFile={onOpenFile} gitRefreshKey={gitRefreshKey} initialDisplayMode={initialDisplayMode} />;
 }
 
-function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefreshKey }: Props) {
+function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefreshKey, initialDisplayMode }: Props) {
   const { isDark } = useTheme();
   const [data, setData] = useState<FileData | null>(null);
   const [gitDiff, setGitDiff] = useState<GitFileDiffResponse | null>(null);
@@ -778,7 +779,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefresh
     }
 
     fetchContent(filePath).then((d) => {
-      if (d?.language === "markdown") setDisplayMode("preview");
+      if (d?.language === "markdown" && initialDisplayMode !== "diff") setDisplayMode("preview");
     }).finally(() => setLoading(false));
 
     // Set up SSE watch
@@ -817,6 +818,20 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile, gitRefresh
   useEffect(() => {
     if (!hasGitDiff && displayMode === "diff") setDisplayMode("source");
   }, [displayMode, hasGitDiff]);
+
+  // Opened from the Changes list (initialDisplayMode === "diff"): switch to the
+  // diff view once the git diff has resolved. We do this after the diff loads
+  // rather than at mount so files without a diff never flash an empty diff view.
+  const autoDiffAppliedRef = useRef(false);
+  useEffect(() => {
+    autoDiffAppliedRef.current = false;
+  }, [filePath]);
+  useEffect(() => {
+    if (initialDisplayMode === "diff" && hasGitDiff && !autoDiffAppliedRef.current) {
+      autoDiffAppliedRef.current = true;
+      setDisplayMode("diff");
+    }
+  }, [initialDisplayMode, hasGitDiff]);
 
   if (loading) {
     return (

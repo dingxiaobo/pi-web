@@ -1124,7 +1124,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           if (!worktreeState) return null;
           const currentWt = worktreeState.worktrees.find((w) => w.path === selectedCwd)
             ?? worktreeState.worktrees.find((w) => w.isMain);
-          const showWtFilter = worktreeState.worktrees.length >= 8;
+          const showWtFilter = worktreeState.worktrees.length >= 3;
           const visibleWorktrees = wtFilter.trim()
             ? worktreeState.worktrees.filter((w) =>
                 (w.branch ?? displayCwd(w.path, homeDir)).toLowerCase().includes(wtFilter.trim().toLowerCase()))

@@ -1,18 +1,18 @@
 ---
 name: sync-upstream
-description: 把开源上游 agegr/pi-web 的最新代码合并到当前分支，构建生产模式到 /home/dxb/app/pi-web 并用 pm2 重启。源项目保持干净。当用户请求"更新开源最新代码"、"同步上游"、"merge upstream"、"拉取开源最新代码"时使用本技能。
+description: 把开源上游 agegr/pi-web 的最新代码合并到当前分支，构建生产模式到 $HOME/app/pi-web 并用 pm2 重启。源项目保持干净。当用户请求"更新开源最新代码"、"同步上游"、"merge upstream"、"拉取开源最新代码"时使用本技能。
 ---
 
 # Sync Upstream — 合并开源最新代码并部署
 
-把上游开源仓库 `git@github.com:agegr/pi-web.git` 的最新提交合并进当前分支，重新构建生产产物到部署目录 `/home/dxb/app/pi-web`，并用 pm2 重启服务。
+把上游开源仓库 `git@github.com:agegr/pi-web.git` 的最新提交合并进当前分支，重新构建生产产物到部署目录 `$HOME/app/pi-web`，并用 pm2 重启服务。
 
 ## 路径约定
 
 | 角色 | 路径 |
 |---|---|
-| 源项目（fork，用于开发/git 操作） | `/home/dxb/projects/pi-web` |
-| 部署目录（独立，构建+运行） | `/home/dxb/app/pi-web` |
+| 源项目（fork，开发/git 操作） | 本 skill 所在 git 仓库根（脚本用 `git rev-parse --show-toplevel` 自动探测） |
+| 部署目录（独立，构建+运行） | `$HOME/app/pi-web` |
 | 上游仓库 | `git@github.com:agegr/pi-web.git`，remote 名 `upstream` |
 | pm2 进程名 | `pi-web` |
 | 端口 | `30141`（监听 `0.0.0.0`） |
@@ -47,7 +47,7 @@ git add -A && git commit --no-edit
 
 上游可能改动了依赖：
 ```bash
-cd /home/dxb/projects/pi-web && npm install
+cd "$(git rev-parse --show-toplevel)" && npm install
 ```
 
 `npm install` 可能重写 `package-lock.json`（如补 peer 元数据）。必须提交以保持工作区干净，否则下次 `merge-upstream.sh` 会因脏树拒绝：

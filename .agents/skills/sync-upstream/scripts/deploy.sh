@@ -7,7 +7,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
-DEPLOY_DIR="/home/dxb/app/pi-web"
+DEPLOY_DIR="$HOME/app/pi-web"
 PM2_NAME="pi-web"
 ECO_FILE="$DEPLOY_DIR/ecosystem.config.cjs"
 

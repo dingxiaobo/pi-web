@@ -11,15 +11,15 @@ DEPLOY_DIR="$HOME/app/pi-web"
 PM2_NAME="pi-web"
 ECO_FILE="$DEPLOY_DIR/ecosystem.config.cjs"
 
-echo "==> [1/5] 同步源码到部署目录 (rsync --delete, 保留 .next/logs/node_modules)"
+echo "==> [1/5] 同步源码到部署目录 (find+tar, 保留 .next/logs/node_modules)"
 mkdir -p "$DEPLOY_DIR/logs"
-rsync -a --delete \
-  --exclude='node_modules' \
-  --exclude='.next' \
-  --exclude='.git' \
-  --exclude='.agents' \
-  --exclude='logs' \
-  "$PROJECT_DIR"/ "$DEPLOY_DIR"/
+# ponytail: 无 rsync/无 sudo 环境，用 find+tar 管道等效 rsync --delete + excludes
+find "$DEPLOY_DIR" -mindepth 1 -maxdepth 1 \
+  ! -name node_modules ! -name .next ! -name logs \
+  -exec rm -rf {} +
+tar -C "$PROJECT_DIR" \
+  --exclude=node_modules --exclude=.next --exclude=.git --exclude=.agents --exclude=logs \
+  -cf - . | tar -C "$DEPLOY_DIR" -xf -
 
 echo "==> [2/5] 软链 node_modules -> 源项目"
 if [ -L "$DEPLOY_DIR/node_modules" ] || [ ! -e "$DEPLOY_DIR/node_modules" ]; then

@@ -44,4 +44,5 @@ fi
 echo "==> [5/5] 状态"
 pm2 describe "$PM2_NAME" 2>/dev/null | grep -E "status|pid|exec mode|cwd|script args" || true
 echo
-echo "✅ 部署完成: http://0.0.0.0:30141  (监听 0.0.0.0:30141)"
+BIND_HOST="$(grep -oE -- '-H [0-9.]+' "$ECO_FILE" | head -1 | awk '{print $2}')"
+echo "✅ 部署完成: http://${BIND_HOST}:30141  (监听 ${BIND_HOST}:30141)"

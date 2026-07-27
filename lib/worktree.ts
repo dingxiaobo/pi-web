@@ -185,6 +185,13 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
   }
   mkdirSync(baseDir, { recursive: true });
 
+  // Fetch latest remote refs so new/existing branches start from up-to-date code.
+  try {
+    await git(repoRoot, ["fetch", "origin"]);
+  } catch {
+    // Non-fatal: continue with whatever refs are available locally.
+  }
+
   // Reuse the branch if it already exists, otherwise create it at HEAD.
   let branchExists = false;
   try {

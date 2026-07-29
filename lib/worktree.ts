@@ -48,9 +48,9 @@ export function invalidateProjectCache(): void {
   globalThis.__piProjectCache?.clear();
 }
 
-async function git(cwd: string, args: string[]): Promise<string> {
+async function git(cwd: string, args: string[], timeoutMs = 10_000): Promise<string> {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
-    timeout: 10_000,
+    timeout: timeoutMs,
     maxBuffer: 1024 * 1024,
     // Pin the message locale so error-text matching (e.g. the dirty-worktree
     // detection in the DELETE route) works regardless of system language.
@@ -187,7 +187,7 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
 
   // Fetch latest remote refs so new/existing branches start from up-to-date code.
   try {
-    await git(repoRoot, ["fetch", "origin"]);
+    await git(repoRoot, ["fetch", "origin"], 60_000);
   } catch {
     // Non-fatal: continue with whatever refs are available locally.
   }
@@ -202,10 +202,12 @@ export async function addWorktree(cwd: string, branch: string): Promise<{ path: 
   }
 
   try {
+    // Large repos (30k+ files) can take minutes to checkout.
+    const WORKTREE_TIMEOUT = 5 * 60_000;
     if (branchExists) {
-      await git(repoRoot, ["worktree", "add", "--", worktreePath, trimmed]);
+      await git(repoRoot, ["worktree", "add", "--", worktreePath, trimmed], WORKTREE_TIMEOUT);
     } else {
-      await git(repoRoot, ["worktree", "add", "-b", trimmed, "--", worktreePath]);
+      await git(repoRoot, ["worktree", "add", "-b", trimmed, "--", worktreePath], WORKTREE_TIMEOUT);
     }
   } catch (error) {
     throw new Error(extractGitError(error));

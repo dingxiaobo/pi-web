@@ -9,8 +9,8 @@
  *   - SSE 连接 / 会话状态都是进程内状态
  *   - 用 cluster 模式会导致会话分散到不同 worker，状态错乱。勿改!
  *
- * 监听 0.0.0.0:30141，无鉴权 —— 仅在可信网络使用。
- * 改回环访问：把 args 里的 -H 0.0.0.0 改成 -H 127.0.0.1。
+ * 监听 127.0.0.1:30141，仅本机可访问。
+ * 改公网访问：把 args 里的 -H 127.0.0.1 改成 -H 0.0.0.0。
  */
 module.exports = {
   apps: [
@@ -18,7 +18,7 @@ module.exports = {
       name: "pi-web",
       // 直接跑 node + next CLI，避免 bin/pi-web.js spawn 子进程导致 pm2 stop 时产生孤儿
       script: "node",
-      args: "node_modules/next/dist/bin/next start -H 0.0.0.0 -p 30141",
+      args: "node_modules/next/dist/bin/next start -H 127.0.0.1 -p 30141",
       cwd: __dirname, // 从部署目录加载时即 $HOME/app/pi-web
       exec_mode: "fork", // 单进程，勿改 cluster
       instances: 1, // 勿增加实例数

@@ -5,7 +5,6 @@ import type { SessionInfo } from "@/lib/types";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
-import { useSharedRunningSessions } from "@/hooks/useSharedRunningSessions";
 
 declare global {
   interface Window {
@@ -110,6 +109,7 @@ interface WorktreeState {
 }
 
 const UNREAD_SESSIONS_STORAGE_KEY = "pi-web:unread-session-ids";
+const RUNNING_SESSIONS_POLL_MS = 2500;
 
 function loadUnreadSessionIds(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -416,9 +416,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [changesCollapsed, setChangesCollapsed] = useState(true);
   const [sessionRefreshDone, setSessionRefreshDone] = useState(false);
   const [explorerRefreshDone, setExplorerRefreshDone] = useState(false);
-  const { runningSessionIds, applyFallback } = useSharedRunningSessions();
+  const [runningSessionIds, setRunningSessionIds] = useState<Set<string>>(new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
+  // Once polling has delivered a snapshot it is the source of truth for
+  // running state; late /api/sessions responses must not overwrite it.
+  const runningPollAuthoritativeRef = useRef(false);
   const sessionRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const explorerRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileExplorerRef = useRef<FileExplorerHandle>(null);
@@ -431,9 +434,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       const data = await res.json() as { sessions: SessionInfo[]; runningSessionIds?: string[] };
       setAllSessions(data.sessions);
       // Treat the fetched running set as an initial fallback only. Once the
-      // shared SSE stream has delivered a frame it owns this state, so a slow
-      // fetch can't revive a stale snapshot.
-      applyFallback(data.runningSessionIds ?? []);
+      // lightweight poll is live, a slow session-list fetch cannot overwrite it.
+      if (!runningPollAuthoritativeRef.current) {
+        setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+      }
       // Drop unread markers for sessions that no longer exist (e.g. deleted).
       const existingIds = new Set(data.sessions.map((s) => s.id));
       setUnreadSessionIds((prev) => {
@@ -452,7 +456,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     } finally {
       if (showLoading) setLoading(false);
     }
-  }, [applyFallback]);
+  }, []);
 
   const initialLoadDone = useRef(false);
   useEffect(() => {
@@ -466,6 +470,65 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     saveUnreadSessionIds(unreadSessionIds);
   }, [unreadSessionIds]);
+
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+
+    const clearTimer = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+
+    const schedule = () => {
+      clearTimer();
+      if (stopped || document.visibilityState !== "visible") return;
+      timer = setTimeout(() => void poll(), RUNNING_SESSIONS_POLL_MS);
+    };
+
+    const poll = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      const current = new AbortController();
+      controller?.abort();
+      controller = current;
+      try {
+        const res = await fetch("/api/agent/running", {
+          cache: "no-store",
+          signal: current.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json() as { runningSessionIds?: string[] };
+        if (stopped || controller !== current) return;
+        runningPollAuthoritativeRef.current = true;
+        setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+      } catch {
+        // Keep the last known state; the next visible-tab poll retries.
+      } finally {
+        if (controller === current) controller = null;
+        schedule();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void poll();
+        return;
+      }
+      clearTimer();
+      controller?.abort();
+      controller = null;
+    };
+
+    void poll();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      stopped = true;
+      clearTimer();
+      controller?.abort();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;

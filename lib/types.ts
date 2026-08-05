@@ -298,6 +298,8 @@ export interface SessionInfo {
   projectRoot?: string;
   /** Branch name when cwd is a linked git worktree (not the main checkout) */
   worktreeBranch?: string;
+  /** Current git branch of the session's cwd. null/undefined for non-git dirs or detached HEAD. */
+  branch?: string | null;
 }
 
 export interface SessionContext {

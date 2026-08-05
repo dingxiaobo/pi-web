@@ -32,6 +32,7 @@ export interface SessionStatsInfo {
   sessionFile?: string;
   sessionId: string;
   sessionName?: string;
+  branch?: string | null;
   userMessages: number;
   assistantMessages: number;
   toolCalls: number;

@@ -37,7 +37,7 @@ import type { ProjectTrustStatus } from "@/lib/api-types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 
-type SessionCopyField = "file" | "id" | "branch";
+type SessionCopyField = "file" | "id" | "branch" | "projectPath" | "worktreePath";
 type AutoNameStatus =
   | { kind: "idle" }
   | { kind: "naming" }
@@ -1328,6 +1328,8 @@ export function AppShell() {
                     const sessionRows = [
                        ...(sessionStats.sessionName ? [{ label: translate("session.name"), value: sessionStats.sessionName, copyField: null }] : []),
                        ...(sessionStats.branch ? [{ label: translate("session.branch"), value: sessionStats.branch, copyField: "branch" as const }] : []),
+                       ...(sessionStats.projectPath ? [{ label: translate("session.projectPath"), value: sessionStats.projectPath, copyField: "projectPath" as const }] : []),
+                       ...(sessionStats.worktreePath ? [{ label: translate("session.worktreePath"), value: sessionStats.worktreePath, copyField: "worktreePath" as const }] : []),
                        { label: translate("session.file"), value: sessionStats.sessionFile ?? translate("session.inMemory"), copyField: "file" as const },
                        { label: translate("session.id"), value: sessionStats.sessionId, copyField: "id" as const },
                     ];
@@ -1386,7 +1388,7 @@ export function AppShell() {
                       return (
                         <button
                           type="button"
-                           title={copied ? translate("session.copied") : translate(field === "file" ? "session.copyFile" : field === "branch" ? "session.copyBranch" : "session.copyId")}
+                           title={copied ? translate("session.copied") : translate(field === "file" ? "session.copyFile" : field === "branch" ? "session.copyBranch" : field === "projectPath" ? "session.copyProjectPath" : field === "worktreePath" ? "session.copyWorktreePath" : "session.copyId")}
                           onClick={() => handleCopySessionField(field, value)}
                           style={{
                             alignSelf: "start",

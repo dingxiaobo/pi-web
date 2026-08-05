@@ -33,6 +33,8 @@ export interface SessionStatsInfo {
   sessionId: string;
   sessionName?: string;
   branch?: string | null;
+  projectPath?: string;
+  worktreePath?: string;
   userMessages: number;
   assistantMessages: number;
   toolCalls: number;

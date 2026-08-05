@@ -442,6 +442,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       sessionId: sessionIdRef.current ?? session?.id ?? "",
       sessionName: session?.name,
       branch: session?.worktreeBranch ?? session?.branch,
+      projectPath: session?.projectRoot ?? session?.cwd,
+      ...(session?.worktreeBranch && session?.cwd ? { worktreePath: session.cwd } : {}),
       userMessages,
       assistantMessages,
       toolCalls,
@@ -451,7 +453,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       cost,
       ...(contextUsage ? { contextUsage } : {}),
     } satisfies SessionStatsInfo;
-  }, [messages, sessionStatsOverride, contextUsage, data?.filePath, session?.id, session?.name, session?.branch, session?.worktreeBranch]);
+  }, [messages, sessionStatsOverride, contextUsage, data?.filePath, session?.id, session?.name, session?.branch, session?.worktreeBranch, session?.projectRoot, session?.cwd]);
 
   const loadSession = useCallback(async (sid: string, showLoading = false, includeState = false) => {
     let messagesLoaded = false;

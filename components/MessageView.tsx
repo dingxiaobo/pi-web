@@ -285,13 +285,6 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.sessionId === next.sessionId;
 });
 
-function collapseSkillTags(text: string): string {
-  return text.replace(/<skill\s+([^>]*?)>[\s\S]*?<\/skill>/gi, (_match, attrs: string) => {
-    const trimmed = attrs.trim();
-    return `<skill ${trimmed} />`;
-  });
-}
-
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
   message: UserMessage;
   cwd?: string;

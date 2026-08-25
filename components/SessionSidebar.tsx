@@ -1270,7 +1270,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             project share the same list anyway. */}
         {showWorktreeSwitcher && (() => {
           if (!worktreeState) return null;
-          const showWtFilter = worktreeState.worktrees.length >= 8;
+          const showWtFilter = worktreeState.worktrees.length >= 3;
           const visibleWorktrees = showWtFilter && wtFilter.trim()
             ? worktreeState.worktrees.filter((w) =>
                 (w.branch ?? displayCwd(w.path, homeDir)).toLowerCase().includes(wtFilter.trim().toLowerCase()))

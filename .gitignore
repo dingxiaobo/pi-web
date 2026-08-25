@@ -45,3 +45,4 @@ next-env.d.ts
 .factory
 /.pi-subagents/
 /.qwen/
+e2e_*.mjs

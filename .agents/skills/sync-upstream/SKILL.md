@@ -16,7 +16,7 @@ description: 先同步 origin 当前分支，再合并 origin/main 和开源上�
 | fork 仓库 | remote 名 `origin`；同步当前同名分支并合并 `origin/main` |
 | 上游仓库 | `git@github.com:agegr/pi-web.git`，remote 名 `upstream` |
 | pm2 进程名 | `pi-web` |
-| 端口 | `30141`（监听 `0.0.0.0`） |
+| 端口 | `30141`（监听 `127.0.0.1`，公网由 caddy 反代） |
 
 源项目**永不生成 `.next`**（构建在部署目录进行），不影响 `npm run dev` 与 `git pull`。部署目录的 `node_modules` 软链到源项目（共享，避免 1.5G 重复）。
 
@@ -92,7 +92,7 @@ pm2 startup   # 按它输出的提示，执行那条 sudo ... 命令
 
 - 构建在部署目录进行，源项目 `.next` 永不生成，故 `npm run dev` 不受影响。
 - 部署目录 `node_modules` 软链到源项目：源项目执行 `npm install` 会同步影响部署（通常即期望行为，因为部署前会重新 build）。若需完全隔离，把软链换成 `cp -a` 拷贝。
-- 监听 `0.0.0.0:30141` **无鉴权**，仅在可信网络使用。改回环：编辑 `ecosystem.config.cjs` 的 `-H 0.0.0.0` 为 `-H 127.0.0.1`。
+- 监听 `127.0.0.1:30141` **无鉴权**，仅回环；公网/局域网访问经 caddy 反代。勿改 `ecosystem.config.cjs` 的 `-H 127.0.0.1` 为 `0.0.0.0`。
 - pm2 为 **fork 单实例**，勿改 cluster（`rpc-manager` 的 `globalThis.__piSessions` 注册表与 SSE 是进程内状态）。
 - 合并顺序固定为 `origin/<当前分支>` → `origin/main` → `upstream/<默认分支>`。
 - 合并仅作用于本地当前分支；推送到 origin（你的 fork）由你手动决定：`git push`。

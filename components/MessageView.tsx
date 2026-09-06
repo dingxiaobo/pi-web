@@ -5,6 +5,7 @@ import { MarkdownBody } from "./MarkdownBody";
 import { ImagePreview } from "./ImagePreview";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
+import { formatFirstTokenDuration } from "@/lib/first-token-format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, isEmptyThinkingBlock } from "@/lib/message-display";
 import { parseUnifiedPatch, type SplitDiffCell } from "@/lib/patch";
@@ -178,6 +179,7 @@ function loadThinkingContent(sessionId: string, entryId: string, blockIndex: num
 interface Props {
   message: AgentMessage;
   isStreaming?: boolean;
+  streamStartedAt?: number;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
   cwd?: string;
@@ -246,12 +248,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, streamStartedAt, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} streamStartedAt={streamStartedAt} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -270,6 +272,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
 }, (prev, next) => {
   return prev.message === next.message
     && prev.isStreaming === next.isStreaming
+    && prev.streamStartedAt === next.streamStartedAt
     && haveSameRelevantToolResults(prev.message, prev.toolResults, next.toolResults)
     && prev.modelNames === next.modelNames
     && prev.cwd === next.cwd
@@ -569,6 +572,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 function AssistantMessageView({
   message,
   isStreaming,
+  streamStartedAt,
   toolResults,
   modelNames,
   cwd,
@@ -581,6 +585,7 @@ function AssistantMessageView({
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
+  streamStartedAt?: number;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
   cwd?: string;
@@ -602,6 +607,8 @@ function AssistantMessageView({
   const [copied, setCopied] = useState(false);
   const streamStartRef = useRef<number | null>(null);
   const [tps, setTps] = useState<number | null>(null);
+  const firstTokenCapturedRef = useRef(false);
+  const [firstTokenSeconds, setFirstTokenSeconds] = useState<number | null>(null);
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
   const tokenEstimateCacheRef = useRef<Map<number, TokenEstimateCacheEntry>>(new Map());
@@ -624,6 +631,8 @@ function AssistantMessageView({
   }, [blockItems, isStreaming]);
   const estimatedTokensRef = useRef(estimatedTokens);
   estimatedTokensRef.current = estimatedTokens;
+  const streamStartedAtRef = useRef(streamStartedAt);
+  streamStartedAtRef.current = streamStartedAt;
 
   // Streaming-based timing for thinking blocks
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
@@ -656,6 +665,11 @@ function AssistantMessageView({
     .filter((b): b is TextContent => b.type === "text")
     .map((b) => b.text)
     .join("\n");
+  const firstTokenText = !isStreaming
+    && message.firstTokenSeconds !== undefined
+    && message.content.some((block) => block.type === "text" || block.type === "thinking")
+    ? t("i18n.firstTokenDuration", { duration: formatFirstTokenDuration(message.firstTokenSeconds) })
+    : null;
 
   const copyContent = () => {
     copyText(textContent).then(() => {
@@ -676,7 +690,9 @@ function AssistantMessageView({
         return next;
       });
       streamStartRef.current = null;
+      firstTokenCapturedRef.current = false;
       setTps(null);
+      setFirstTokenSeconds(null);
       return;
     }
     const tick = () => {
@@ -706,6 +722,16 @@ function AssistantMessageView({
       });
 
       const tokens = estimatedTokensRef.current;
+      const startedAt = streamStartedAtRef.current;
+      if (startedAt !== undefined) {
+        const seconds = Math.max(0, (now - startedAt) / 1000);
+        if (tokens === 0) {
+          if (!firstTokenCapturedRef.current) setFirstTokenSeconds(seconds);
+        } else if (!firstTokenCapturedRef.current) {
+          firstTokenCapturedRef.current = true;
+          setFirstTokenSeconds(seconds);
+        }
+      }
       if (tokens === 0) return;
       if (streamStartRef.current === null) streamStartRef.current = now;
       const elapsed = (now - streamStartRef.current) / 1000;
@@ -742,6 +768,9 @@ function AssistantMessageView({
           return (
             <>
 
+              {streamStartedAt !== undefined && firstTokenSeconds !== null && (
+                <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--bg-hover)", color: "var(--text-dim)", fontSize: 11, fontWeight: 400, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t("i18n.firstTokenDuration", { duration: formatFirstTokenDuration(firstTokenSeconds) })}</span>
+              )}
               {est > 0 && (
                 <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)" }} title={t("i18n.estimatedTokens")}>
                   <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 400 }}>
@@ -799,9 +828,9 @@ function AssistantMessageView({
       <div style={{
         display: "flex", alignItems: "center", gap: 8, marginTop: 4,
       }}>
-        {message.usage && !isStreaming && (
+        {(message.usage || firstTokenText) && !isStreaming && (
           <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
-            {formatUsage(message.usage)}
+            {formatUsage(message.usage, firstTokenText)}
           </div>
         )}
         {textContent && !isStreaming && (
@@ -1624,13 +1653,16 @@ function formatUsage(usage: {
   cacheRead: number;
   cacheWrite: number;
   cost: { total: number };
-}): string {
+} | undefined, firstTokenText: string | null): string {
   const parts = [];
-  if (usage.input) parts.push(`${usage.input.toLocaleString()} in`);
-  if (usage.output) parts.push(`${usage.output.toLocaleString()} out`);
-  if (usage.cacheRead) parts.push(`${usage.cacheRead.toLocaleString()} cache R`);
-  if (usage.cacheWrite) parts.push(`${usage.cacheWrite.toLocaleString()} cache W`);
-  if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
+  if (firstTokenText) parts.push(firstTokenText);
+  if (usage) {
+    if (usage.input) parts.push(`${usage.input.toLocaleString()} in`);
+    if (usage.output) parts.push(`${usage.output.toLocaleString()} out`);
+    if (usage.cacheRead) parts.push(`${usage.cacheRead.toLocaleString()} cache R`);
+    if (usage.cacheWrite) parts.push(`${usage.cacheWrite.toLocaleString()} cache W`);
+    if (usage.cost?.total) parts.push(`$${usage.cost.total.toFixed(4)}`);
+  }
   return parts.join(" · ");
 }
 

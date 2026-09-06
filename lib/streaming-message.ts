@@ -12,6 +12,7 @@ export type ClientAssistantMessageEvent =
 export interface StreamingState {
   isStreaming: boolean;
   streamingMessage: AssistantMessage | null;
+  startedAt: number | null;
 }
 
 export type StreamAction =
@@ -23,6 +24,7 @@ export type StreamAction =
 export const INITIAL_STREAMING_STATE: StreamingState = {
   isStreaming: false,
   streamingMessage: null,
+  startedAt: null,
 };
 
 function updateContentBlock(
@@ -38,6 +40,7 @@ function updateContentBlock(
   if (!nextBlock) return state;
   content[contentIndex] = nextBlock;
   return {
+    ...state,
     isStreaming: true,
     streamingMessage: { ...message, content },
   };
@@ -98,11 +101,15 @@ export function streamReducer(
 ): StreamingState {
   switch (action.type) {
     case "start":
-      return { isStreaming: true, streamingMessage: null };
+      return { isStreaming: true, streamingMessage: null, startedAt: state.startedAt ?? Date.now() };
     case "snapshot": {
       const message = normalizeToolCalls(action.message);
       return message.role === "assistant"
-        ? { isStreaming: true, streamingMessage: message }
+        ? {
+            isStreaming: true,
+            streamingMessage: message,
+            startedAt: state.isStreaming ? state.startedAt : Date.now(),
+          }
         : state;
     }
     case "delta":

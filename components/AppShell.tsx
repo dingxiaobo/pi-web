@@ -2436,7 +2436,7 @@ export function AppShell() {
           setSettingsSection(null);
           setModelsRefreshKey((key) => key + 1);
         }}
-        onPluginsReloaded={() => setSessionKey((key) => key + 1)}
+        onSessionReloaded={() => setSessionKey((key) => key + 1)}
       />
     )}
     {projectTrustDialogOpen && projectTrustCwd && (

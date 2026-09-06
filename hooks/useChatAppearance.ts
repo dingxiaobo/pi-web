@@ -24,8 +24,10 @@ let appearance: ChatAppearance | null = null;
 const listeners = new Set<() => void>();
 
 export function clampChatContentWidth(value: unknown): number {
+  // null = localStorage miss (readStoredPreference returns null); treat like undefined so the
+  // configured default applies instead of clamping Number(null)=0 down to MIN.
   const width = Number(value);
-  if (!Number.isFinite(width)) return CHAT_CONTENT_WIDTH_DEFAULT;
+  if (value == null || !Number.isFinite(width)) return CHAT_CONTENT_WIDTH_DEFAULT;
   return Math.max(CHAT_CONTENT_WIDTH_MIN, Math.min(CHAT_CONTENT_WIDTH_MAX, Math.round(width)));
 }
 

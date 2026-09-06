@@ -34,6 +34,7 @@ test("General chat settings own the chat width preference", () => {
 
 test("chat width validation preserves the default and supported range", () => {
   assert.equal(clampChatContentWidth(undefined), 1230);
+  assert.equal(clampChatContentWidth(null), 1230); // localStorage miss -> default, not MIN
   assert.equal(clampChatContentWidth("invalid"), 1230);
   assert.equal(clampChatContentWidth(700), 820);
   assert.equal(clampChatContentWidth(1104), 1104);

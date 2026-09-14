@@ -8,7 +8,7 @@ import { createJiti } from "jiti";
 const source = await readFile(new URL("./AppShell.tsx", import.meta.url), "utf8");
 const jiti = createJiti(import.meta.url);
 const draftStore = await jiti.import("../lib/draft-store.ts");
-
+const cwdCompare = await jiti.import("../lib/cwd-compare.ts");
 function callbackBody(name, nextName) {
   const start = source.indexOf(`const ${name} = useCallback`);
   const end = source.indexOf(`\n  const ${nextName}`, start);
@@ -73,6 +73,7 @@ test("New restores the draft after session navigation and workspace auto-restore
       const response = Promise.withResolvers();
       const context = vm.createContext({
         ...draftStore,
+        ...cwdCompare,
         crypto: globalThis.crypto,
         queueMicrotask,
         URLSearchParams,

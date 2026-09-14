@@ -8,6 +8,7 @@ import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { sameCwd } from "@/lib/cwd-compare";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
 import { DirectoryPicker } from "./DirectoryPicker";
@@ -656,37 +657,74 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }), []);
 
   /** Resolve both display root and stable identity from server-provided data. */
+  // Identities resolved for a cwd are memoized: once the server has given us
+  // a stable project identity for a directory, transient refresh states (a
+  // worktree fetch error, a session-list reload, a not-yet-hydrated list) must
+  // not regress it to the raw-path fallback. Without the memo the same cwd
+  // flips between "raw cwd" and "stable project key" across refreshes, which
+  // downstream code can mistake for a workspace switch. The blind fallback
+  // itself is never memoized so hydration can still improve it.
+  const stableIdentityRef = useRef<Map<string, ProjectSelection>>(new Map());
+  const rememberStableIdentity = useCallback((cwd: string, selection: ProjectSelection) => {
+    stableIdentityRef.current.set(cwd, selection);
+  }, []);
+  const lookupStableIdentity = useCallback((cwd: string): ProjectSelection | null => {
+    const exact = stableIdentityRef.current.get(cwd);
+    if (exact) return exact;
+    // A normalization variant of a remembered cwd (trailing slash, slash
+    // style, Windows drive-letter case) resolves to the same identity.
+    for (const [knownCwd, selection] of stableIdentityRef.current) {
+      if (sameCwd(knownCwd, cwd)) return selection;
+    }
+    return null;
+  }, []);
   const projectFor = useCallback((cwd: string | null): ProjectSelection | null => {
     if (!cwd) return null;
     // /api/cwd/validate resolves identity before a custom path becomes active,
     // preventing one render with a raw path key from looking like a switch.
     if (validatedProject?.cwd === cwd) {
-      return projectSelection(validatedProject.root, validatedProject.key);
+      const selection = projectSelection(validatedProject.root, validatedProject.key);
+      rememberStableIdentity(cwd, selection);
+      return selection;
     }
     if (worktreeState && worktreeState.forCwd === cwd) {
-      return projectSelection(worktreeState.projectRoot, worktreeState.projectKey);
+      const selection = projectSelection(worktreeState.projectRoot, worktreeState.projectKey);
+      rememberStableIdentity(cwd, selection);
+      return selection;
     }
     // Any path in the loaded worktree list belongs to that project — covers
     // worktrees without sessions, so switching to them keeps the row mounted.
     if (worktreeState?.worktrees.some((w) => w.path === cwd)) {
-      return projectSelection(worktreeState.projectRoot, worktreeState.projectKey);
+      const selection = projectSelection(worktreeState.projectRoot, worktreeState.projectKey);
+      rememberStableIdentity(cwd, selection);
+      return selection;
     }
+    // A previously resolved identity is more trustworthy than a possibly
+    // unhydrated session match and never regresses to the raw-path fallback.
+    const remembered = lookupStableIdentity(cwd);
+    if (remembered) return remembered;
     const match = allSessions.find((session) => (
       session.cwd === cwd || (session.projectRoot ?? session.cwd) === cwd
     ));
-    return match
-      ? projectSelection(match.projectRoot ?? match.cwd, workspaceKeyOf(match))
-      : projectSelection(cwd, cwd);
-  }, [validatedProject, worktreeState, allSessions, projectSelection]);
+    if (match) {
+      const selection = projectSelection(match.projectRoot ?? match.cwd, workspaceKeyOf(match));
+      rememberStableIdentity(cwd, selection);
+      return selection;
+    }
+    return projectSelection(cwd, cwd);
+  }, [validatedProject, worktreeState, allSessions, projectSelection, rememberStableIdentity, lookupStableIdentity]);
 
   // A worktree/session refresh can hydrate the stable key without changing
   // cwd, so notify when either changes. The parent treats same-cwd key changes
-  // as identity hydration rather than a workspace switch.
+  // as identity hydration rather than a workspace switch. cwd equality goes
+  // through sameCwd so a re-hydrated session object whose cwd only differs
+  // textually (trailing slash, slash style, drive-letter case) does not look
+  // like a cwd move.
   const lastNotifiedProjectRef = useRef<{ cwd: string | null; key: string | null } | null>(null);
   useEffect(() => {
     const project = projectFor(selectedCwd);
     const previous = lastNotifiedProjectRef.current;
-    if (previous?.cwd === selectedCwd && previous.key === (project?.key ?? null)) return;
+    if (previous && sameCwd(previous.cwd, selectedCwd) && previous.key === (project?.key ?? null)) return;
     lastNotifiedProjectRef.current = { cwd: selectedCwd, key: project?.key ?? null };
     onCwdChange?.(
       selectedCwd,
@@ -699,13 +737,18 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // worktrees in a project share one list, so clicking a session from another
   // worktree should move the effective cwd there. Only fires when the prop
   // value changes, so a manual switcher change is not snapped back.
+  // Comparison goes through sameCwd: a re-hydrated session object whose cwd
+  // differs only textually (trailing slash, slash style, drive-letter case)
+  // must not snap the switcher and must not be reported to the parent as a
+  // cwd move — that is what made open chats remount "on their own".
   const lastSyncedCwdPropRef = useRef<string | null>(null);
   useEffect(() => {
-    if (selectedCwdProp && selectedCwdProp !== lastSyncedCwdPropRef.current) {
-      lastSyncedCwdPropRef.current = selectedCwdProp;
-      setSelectedCwd(selectedCwdProp);
-    }
-  }, [selectedCwdProp]);
+    if (!selectedCwdProp) return;
+    if (sameCwd(selectedCwdProp, lastSyncedCwdPropRef.current)) return;
+    lastSyncedCwdPropRef.current = selectedCwdProp;
+    if (sameCwd(selectedCwdProp, selectedCwd)) return;
+    setSelectedCwd(selectedCwdProp);
+  }, [selectedCwdProp, selectedCwd]);
 
   // Load worktrees for the current effective cwd
   const [wtRefreshKey, setWtRefreshKey] = useState(0);

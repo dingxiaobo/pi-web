@@ -41,6 +41,7 @@ import {
   setLastOpenSession,
   workspaceKeyOf,
 } from "@/lib/workspace-memory";
+import { sameCwd } from "@/lib/cwd-compare";
 import {
   getDefaultRightPanelWidth,
   getRightPanelMaxWidth,
@@ -560,9 +561,13 @@ export function AppShell() {
   }, [initialNavigation]);
 
   // Restore the workspace's last open session after switching to it. Called
-  // from handleCwdChange once the outgoing context has been reset. The session
-  // is looked up against the live list so a deleted or drifted session falls
-  // back to the default welcome page instead of erroring.
+  // from handleCwdChange once the outgoing context has been reset — i.e. only
+  // after a real cross-project switch in THIS tab; normalization-only cwd
+  // changes and key hydration never reach here. The memory is window-scoped
+  // (sessionStorage) with a shared-store fallback that skips entries another
+  // window wrote recently, so a concurrent tab cannot hijack this restore.
+  // The session is looked up against the live list so a deleted or drifted
+  // session falls back to the default welcome page instead of erroring.
   const restoreWorkspaceContext = useCallback((projectKey: string, cwd: string) => {
     const token = ++workspaceRestoreTokenRef.current;
     const lastOpenSessionId = getLastOpenSession(projectKey);
@@ -628,14 +633,18 @@ export function AppShell() {
       return;
     }
     // The server may hydrate a normalized key after a custom cwd is already
-    // active. Updating identity for the exact same cwd is not a user switch.
-    if (currentFreshCwd === cwd && currentProject !== newProject) return;
+    // active. Updating identity for the same directory is not a user switch —
+    // compare through sameCwd so a path that only differs by separator style,
+    // trailing slash or (on Windows) drive-letter case is not mistaken for a
+    // move and cannot remount the chat.
+    const cwdUnchanged = sameCwd(currentFreshCwd, cwd);
+    if (cwdUnchanged && currentProject !== newProject) return;
     // Existing sessions stay open when the worktree selector moves within the
     // same project. A fresh composer must remount when its effective cwd moves,
     // otherwise its already-created runtime would keep sending to the old cwd.
     if (
       currentProject === newProject
-      && (selectedSession !== null || currentFreshCwd === cwd)
+      && (selectedSession !== null || cwdUnchanged)
     ) {
       return;
     }

@@ -220,8 +220,9 @@ test("stale fresh-session completion cannot replace the active composer", () => 
   assert.match(cwdChangeSource, /const currentFreshCwd = newSessionCwd \?\? activeCwd/);
   assert.match(
     cwdChangeSource,
-    /currentProject === newProject\s*&& \(selectedSession !== null \|\| currentFreshCwd === cwd\)/,
+    /currentProject === newProject\s*&& \(selectedSession !== null \|\| cwdUnchanged\)/,
   );
+  assert.match(cwdChangeSource, /const cwdUnchanged = sameCwd\(currentFreshCwd, cwd\);/);
   assert.match(cwdChangeSource, /if \(currentProject !== newProject\) \{[\s\S]*?setFileTabs\(\[\]\)/);
   assert.match(
     appShellSource,

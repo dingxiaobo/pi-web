@@ -7,7 +7,7 @@ import { loadExplorerOpen, saveExplorerOpen } from "@/lib/file-explorer-state";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { skillExpansionToCommand } from "@/lib/slash-display";
 import { getProjectActivity, getRecentProjects, sessionsForProject } from "@/lib/project-groups";
-import { workspaceKeyOf } from "@/lib/workspace-memory";
+import { workspaceKeyOf, getLastSelectedCwd, saveLastSelectedCwd } from "@/lib/workspace-memory";
 import { sameCwd } from "@/lib/cwd-compare";
 import { formatRelativeTime } from "@/lib/i18n/format";
 import { useI18n } from "@/hooks/useI18n";
@@ -805,10 +805,26 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         // Session not found — notify parent so it can show the placeholder
         onInitialRestoreDone?.();
       }
+      // This window's own last cwd wins over the global most-recent project:
+      // another tab may have made that project recent, and landing here on
+      // it is exactly the "tab jumped to another tab's project" bug after a
+      // background-tab discard/reload. New windows (no memory of their own)
+      // still fall back to the most-recent project.
+      const rememberedCwd = getLastSelectedCwd();
+      if (rememberedCwd) {
+        setSelectedCwd(rememberedCwd);
+        return;
+      }
       const projects = getRecentProjects(allSessions);
       if (projects.length > 0) setSelectedCwd(projects[0].root);
     }
   }, [allSessions, selectedCwd, initialSessionId, skipInitialProjectSelection, onSelectSession, onInitialRestoreDone]);
+
+  // Remember this window's selected cwd so a reload restores the project this
+  // tab was on (see the auto-select effect above).
+  useEffect(() => {
+    if (selectedCwd) saveLastSelectedCwd(selectedCwd);
+  }, [selectedCwd]);
 
   // Prefer an exact UI selection while a refetch is in flight. Once the
   // response catches up, the server-resolved path handles Windows case and

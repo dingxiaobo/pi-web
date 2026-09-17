@@ -224,6 +224,40 @@ export function clearLastOpen(
   }
 }
 
+/**
+ * The cwd this window (tab) had selected last, or null.
+ *
+ * Window-scoped (sessionStorage): a reload lands back on the project this tab
+ * was on instead of the globally most-recent project — which belongs to
+ * whichever tab happened to run the newest session. Without this, a
+ * backgrounded tab that the browser discarded (reloaded on return) while it
+ * sat on an anchor-less fresh composer jumped to another tab's project.
+ */
+const LAST_SELECTED_CWD_KEY = "pi-web:last-selected-cwd";
+
+export function getLastSelectedCwd(
+  storages: WorkspaceMemoryStorages = {},
+): string | null {
+  try {
+    const value = readMap(resolveWindowStorage(storages.window), LAST_SELECTED_CWD_KEY)["cwd"];
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastSelectedCwd(
+  cwd: string,
+  storages: WorkspaceMemoryStorages = {},
+): void {
+  if (!cwd) return;
+  try {
+    writeMap(resolveWindowStorage(storages.window), LAST_SELECTED_CWD_KEY, { cwd });
+  } catch {
+    // storage unavailable — best-effort
+  }
+}
+
 /** Workspace identity for a session: resolved project root when known, else cwd. */
 export function workspaceKeyOf(session: {
   cwd: string;

@@ -62,3 +62,19 @@ test("the selectedCwd prop sync ignores normalization-only differences", () => {
   assert.match(sync, /if \(sameCwd\(selectedCwdProp, selectedCwd\)\) return;/);
   assert.match(sync, /setSelectedCwd\(selectedCwdProp\);/);
 });
+
+test("a reloaded tab restores its own cwd before the most-recent project", () => {
+  const autoSelectStart = sidebar.indexOf("// Auto-select cwd and restore session from URL on first load");
+  const autoSelectEnd = sidebar.indexOf("// Prefer an exact UI selection while a refetch is in flight", autoSelectStart);
+  const autoSelect = sidebar.slice(autoSelectStart, autoSelectEnd);
+  assert.notEqual(autoSelectStart, -1, "auto-select effect found");
+  // Window memory first, most-recent project only as the fallback.
+  assert.match(autoSelect, /const rememberedCwd = getLastSelectedCwd\(\);/);
+  assert.match(autoSelect, /if \(rememberedCwd\) \{[\s\S]*?setSelectedCwd\(rememberedCwd\);[\s\S]*?return;/);
+  assert.ok(
+    autoSelect.indexOf("setSelectedCwd(rememberedCwd)") < autoSelect.indexOf("setSelectedCwd(projects[0].root)"),
+    "remembered cwd is adopted before the most-recent project",
+  );
+  // And the selection is persisted per window on every change.
+  assert.match(sidebar, /if \(selectedCwd\) saveLastSelectedCwd\(selectedCwd\);/);
+});

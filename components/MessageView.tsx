@@ -8,6 +8,7 @@ import { ThinkingIcon } from "./ThinkingIcon";
 import { copyText } from "@/lib/clipboard";
 import { useI18n } from "@/hooks/useI18n";
 import { useIsMobile } from "@/hooks/useIsMobile";
+import { formatFirstTokenDuration } from "@/lib/first-token-format";
 import { parseCompactionSummary } from "@/lib/compaction-summary";
 import { getAssistantErrorMessage, getThinkingPreview, hasAssistantAnswer, isAssistantTruncated, isEmptyThinkingBlock, splitThinkingPieces } from "@/lib/message-display";
 import { formatTurnDuration } from "@/lib/turn-duration";
@@ -193,6 +194,7 @@ function loadThinkingContent(sessionId: string, entryId: string, blockIndex: num
 interface Props {
   message: AgentMessage;
   isStreaming?: boolean;
+  streamStartedAt?: number;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
   cwd?: string;
@@ -311,6 +313,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
 }, (prev, next) => {
   return prev.message === next.message
     && prev.isStreaming === next.isStreaming
+    && prev.streamStartedAt === next.streamStartedAt
     && haveSameRelevantToolResults(prev.message, prev.toolResults, next.toolResults)
     && prev.modelNames === next.modelNames
     && prev.cwd === next.cwd
@@ -646,6 +649,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
 function AssistantMessageView({
   message,
   isStreaming,
+  streamStartedAt,
   toolResults,
   modelNames,
   cwd,
@@ -664,6 +668,7 @@ function AssistantMessageView({
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
+  streamStartedAt?: number;
   toolResults?: Map<string, ToolResultMessage>;
   modelNames?: Record<string, string>;
   cwd?: string;
@@ -696,6 +701,8 @@ function AssistantMessageView({
   const streamRateKeyRef = useRef(rateKey);
   streamRateKeyRef.current = rateKey;
   const [tps, setTps] = useState<number | null>(null);
+  const firstTokenCapturedRef = useRef(false);
+  const [firstTokenSeconds, setFirstTokenSeconds] = useState<number | null>(null);
   const blockItemsRef = useRef(blockItems);
   blockItemsRef.current = blockItems;
   const tokenEstimateCacheRef = useRef<Map<number, TokenEstimateCacheEntry>>(new Map());
@@ -718,6 +725,8 @@ function AssistantMessageView({
   }, [blockItems, isStreaming]);
   const estimatedTokensRef = useRef(estimatedTokens);
   estimatedTokensRef.current = estimatedTokens;
+  const streamStartedAtRef = useRef(streamStartedAt);
+  streamStartedAtRef.current = streamStartedAt;
 
   // Streaming-based timing for thinking blocks
   const blockStartTimesRef = useRef<Map<number, number>>(new Map());
@@ -752,6 +761,11 @@ function AssistantMessageView({
     .filter((b): b is TextContent => b.type === "text")
     .map((b) => b.text)
     .join("\n");
+  const firstTokenText = !isStreaming
+    && message.firstTokenSeconds !== undefined
+    && message.content.some((block) => block.type === "text" || block.type === "thinking")
+    ? t("i18n.firstTokenDuration", { duration: formatFirstTokenDuration(message.firstTokenSeconds) })
+    : null;
 
   const copyContent = () => {
     copyText(textContent).then(() => {
@@ -772,7 +786,9 @@ function AssistantMessageView({
         return next;
       });
       streamStartRef.current = null;
+      firstTokenCapturedRef.current = false;
       setTps(null);
+      setFirstTokenSeconds(null);
       return;
     }
     const tick = () => {
@@ -802,6 +818,16 @@ function AssistantMessageView({
       });
 
       const tokens = estimatedTokensRef.current;
+      const startedAt = streamStartedAtRef.current;
+      if (startedAt !== undefined) {
+        const seconds = Math.max(0, (now - startedAt) / 1000);
+        if (tokens === 0) {
+          if (!firstTokenCapturedRef.current) setFirstTokenSeconds(seconds);
+        } else if (!firstTokenCapturedRef.current) {
+          firstTokenCapturedRef.current = true;
+          setFirstTokenSeconds(seconds);
+        }
+      }
       if (tokens === 0) return;
       streamStartRef.current ??= streamRateStart(streamRateKeyRef.current, tokens, now);
       const rate = streamTokensPerSecond(streamStartRef.current, tokens, now);
@@ -840,6 +866,9 @@ function AssistantMessageView({
           return (
             <>
 
+              {streamStartedAt !== undefined && firstTokenSeconds !== null && (
+                <span style={{ padding: "1px 6px", borderRadius: 4, background: "var(--bg-hover)", color: "var(--text-dim)", fontSize: 11, fontWeight: 400, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{t("i18n.firstTokenDuration", { duration: formatFirstTokenDuration(firstTokenSeconds) })}</span>
+              )}
               {est > 0 && (
                 <span style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text)" }} title={t("i18n.estimatedTokens")}>
                   <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 11, fontWeight: 400 }}>
@@ -943,12 +972,15 @@ function AssistantMessageView({
       <div style={{
         display: "flex", alignItems: "center", gap: 8, marginTop: 4,
       }}>
-        {(message.usage || turnDurationMs !== undefined) && !isStreaming && (
+        {(message.usage || firstTokenText || turnDurationMs !== undefined) && !isStreaming && (
           <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
             {[
+              firstTokenText,
               message.usage ? formatUsage(message.usage) : null,
               turnDurationMs !== undefined ? t("chat.turnDuration", { time: formatTurnDuration(turnDurationMs) }) : null,
             ].filter(Boolean).join(" \u00b7 ")}
+          </div>
+        )}
           </div>
         )}
         {textContent && !isStreaming && (

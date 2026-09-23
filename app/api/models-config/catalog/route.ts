@@ -1,3 +1,6 @@
+import { promises as fs } from "fs";
+import { homedir } from "os";
+import { join } from "path";
 import { NextResponse } from "next/server";
 import {
   flattenModelsDevCatalog,
@@ -9,6 +12,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
+const LOCAL_CATALOG_PATH = join(homedir(), ".pi", "models.dev.json");
 const CATALOG_TTL_MS = 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -26,14 +30,23 @@ function getCache(): CatalogCache {
   return globalThis.__piModelsDevCatalogCache ??= { entries: [], expiresAt: 0 };
 }
 
+async function loadCatalogRaw(): Promise<unknown> {
+  try {
+    return JSON.parse(await fs.readFile(LOCAL_CATALOG_PATH, "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const response = await fetch(MODELS_DEV_URL, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`models.dev returned HTTP ${response.status}`);
+    return await response.json();
+  }
+}
+
 async function fetchCatalog(): Promise<ModelCatalogEntry[]> {
-  const response = await fetch(MODELS_DEV_URL, {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!response.ok) throw new Error(`models.dev returned HTTP ${response.status}`);
-  const entries = flattenModelsDevCatalog(await response.json());
+  const entries = flattenModelsDevCatalog(await loadCatalogRaw());
   if (entries.length === 0) throw new Error("models.dev returned an empty catalog");
   return entries;
 }

@@ -21,8 +21,9 @@ import { ExtensionStatusBar } from "./ExtensionStatusBar";
 import { AnsiText } from "./AnsiText";
 import { useI18n } from "@/hooks/useI18n";
 import { phaseLabel } from "@/lib/chat-phase-label";
+import { formatFirstTokenDuration } from "@/lib/first-token-format";
 import { useAgentSession, type AgentEndInfo, type NewSessionChoices, type NoticeItem } from "@/hooks/useAgentSession";
-import { selectHasStreamingContent, selectIsStreaming, selectStreamingMessage, useStreamingSelector } from "@/hooks/useStreamingSelector";
+import { selectHasStreamingContent, selectIsStreaming, selectStartedAt, selectStreamingMessage, useStreamingSelector } from "@/hooks/useStreamingSelector";
 import type { StreamingStore } from "@/lib/streaming-message";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -90,6 +91,22 @@ interface Props {
   holdAudio?: () => () => void;
 }
 const CHAT_MINIMAP_WIDTH = 36;
+function WaitingFirstTokenTimer({ startedAt }: { startedAt: number }) {
+  const { t } = useI18n();
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(timer);
+  }, [startedAt]);
+
+  return (
+    <span style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
+      {t("i18n.firstTokenDuration", { duration: formatFirstTokenDuration(Math.max(0, (now - startedAt) / 1000)) })}
+    </span>
+  );
+}
+
 const CHAT_COLUMN_PADDING = 16;
 
 // One update check per page. Every fresh composer mounts the header again
@@ -300,6 +317,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // re-render StreamingReply alone.
   const isStreaming = useStreamingSelector(streamingStore, selectIsStreaming);
   const hasStreamingContent = useStreamingSelector(streamingStore, selectHasStreamingContent);
+  const startedAt = useStreamingSelector(streamingStore, selectStartedAt);
   const getStreamingMessage = useCallback(() => streamingStore.getState().streamingMessage, [streamingStore]);
   const sessionBusy = agentRunning || bashRunning;
   // While this session's run is under way its chime may come with the phone
@@ -1295,6 +1313,12 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             {agentRunning && !hasStreamingContent && (agentPhase || isCompacting) && (
               <div className="break-words py-2 text-[13px] text-text-muted">
                 <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t, isCompacting)}</span>
+                {agentPhase?.kind === "waiting_model" && startedAt !== null && (
+                  <>
+                    <span> · </span>
+                    <WaitingFirstTokenTimer startedAt={startedAt} />
+                  </>
+                )}
               </div>
             )}
 

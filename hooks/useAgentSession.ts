@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useReducer } from "react";
 import type {
   AgentMessage,
+  AssistantMessage,
   BlockingExtensionUiRequest,
   ExtensionStatusItem,
   ExtensionUiRequest,
@@ -116,6 +117,33 @@ function normalizeQueuedMessages(q?: { steering?: string[]; followUp?: string[] 
 }
 
 type ExtensionUiDialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" }>;
+function firstTokenKey(sessionId: string | null, message: AssistantMessage): string | null {
+  return sessionId && message.timestamp !== undefined ? `${sessionId}:${message.timestamp}` : null;
+}
+
+function restoreFirstTokenSeconds(messages: AgentMessage[], stored: ReadonlyMap<string, number>, sessionId: string | null): AgentMessage[] {
+  if (stored.size === 0) return messages;
+  let changed = false;
+  const restored = messages.map((message): AgentMessage => {
+    if (message.role !== "assistant" || message.timestamp === undefined || !hasModelOutput(message)) return message;
+    const key = firstTokenKey(sessionId, message);
+    const seconds = key === null ? undefined : stored.get(key);
+    if (seconds === undefined) return message;
+    changed = true;
+    return { ...message, firstTokenSeconds: seconds };
+  });
+  return changed ? restored : messages;
+}
+
+function isFirstTokenEvent(event: ClientAssistantMessageEvent): boolean {
+  return event.type === "text_start" || event.type === "text_delta" || event.type === "text_end"
+    || event.type === "thinking_start" || event.type === "thinking_delta" || event.type === "thinking_end";
+}
+
+function hasModelOutput(message: AssistantMessage): boolean {
+  return message.content.some((block) => block.type === "text" || block.type === "thinking");
+}
+
 type ExtensionUiCustomRequest = Extract<ExtensionUiRequest, { method: "custom" }>;
 export type NoticeType = "info" | "success" | "warning" | "error";
 
@@ -360,6 +388,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // Outside React state: a streamed chunk must not re-render the whole chat (see StreamingStore).
   const [streamingStore] = useState(createStreamingStore);
   const dispatch = streamingStore.dispatch;
+  const firstTokenSecondsRef = useRef<number | null>(null);
+  const firstTokenStartedAtRef = useRef<number | null>(null);
+  const firstTokenSecondsByMessageRef = useRef(new Map<string, number>());
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
   const [pendingBash, setPendingBash] = useState<{ command: string; excludeFromContext: boolean } | null>(null);
@@ -710,7 +741,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           loadedEntryIds: entryIdsRef.current,
         });
       } else {
-        setMessages(persistedMessages);
+        setMessages(restoreFirstTokenSeconds(persistedMessages, firstTokenSecondsByMessageRef.current, sid));
         setEntryIds(d.context.entryIds ?? []);
         setHistoryCursor(d.context.oldestEntryId);
         setHasEarlierMessages(d.context.hasMore);
@@ -1195,6 +1226,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setAgentRunning(false);
     setAgentPhase(null);
     setRetryInfo(null);
+    firstTokenSecondsRef.current = null;
+    firstTokenStartedAtRef.current = null;
     setActiveToolResults(new Map());
     dispatch({ type: "end" });
     return wasRunning;
@@ -1420,9 +1453,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   }, [agentRunning]);
 
   const handleAgentEvent = useCallback((event: AgentEvent) => {
+    const captureFirstToken = () => {
+      if (firstTokenSecondsRef.current !== null) return;
+      const startedAt = firstTokenStartedAtRef.current;
+      if (startedAt === null) return;
+      firstTokenSecondsRef.current = Math.max(0, (Date.now() - startedAt) / 1000);
+    };
+
     switch (event.type) {
       case "connected": {
-        dispatch({ type: "end" });
+        if (!agentRunningRef.current) dispatch({ type: "end" });
         if (Array.isArray(event.pendingExtensionUiIds)) {
           // The server replays what it still holds right after this event.
           const pending = new Set(event.pendingExtensionUiIds as string[]);
@@ -1539,6 +1579,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           const msg = event.message as AgentMessage | undefined;
           if (msg?.role === "user") break;
           if (msg?.role === "assistant") {
+            if (firstTokenStartedAtRef.current === null && firstTokenSecondsRef.current === null) firstTokenStartedAtRef.current = Date.now();
+            if (msg.content.length > 0) captureFirstToken();
             dispatch({ type: "snapshot", message: msg });
             if (msg.content.length > 0) setAgentPhase(null);
           } else if (msg) {
@@ -1547,6 +1589,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         } else {
           const delta = event.assistantMessageEvent as ClientAssistantMessageEvent | undefined;
           if (delta) {
+            if (isFirstTokenEvent(delta)) captureFirstToken();
             dispatch({ type: "delta", event: delta });
             if (delta.type !== "toolcall_start" && delta.type !== "toolcall_delta") {
               setAgentPhase(null);
@@ -1591,8 +1634,17 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             return [...prev, delivered];
           });
         } else if (completed) {
-          setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
-          if (completed.role === "assistant") {
+          const finished = normalizeToolCalls(completed);
+          let message = finished;
+          if (finished.role === "assistant" && hasModelOutput(finished) && firstTokenSecondsRef.current !== null) {
+            const key = firstTokenKey(sessionIdRef.current, finished);
+            if (key) firstTokenSecondsByMessageRef.current.set(key, firstTokenSecondsRef.current);
+            message = { ...finished, firstTokenSeconds: firstTokenSecondsRef.current };
+            firstTokenSecondsRef.current = null;
+            firstTokenStartedAtRef.current = null;
+          }
+          setMessages((prev) => [...prev, message]);
+          if (finished.role === "assistant") {
             const sid = sessionIdRef.current;
             if (sid) void refreshContextUsage(sid);
           }
@@ -1656,6 +1708,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       case "tool_execution_end": {
         if (isNestedToolExecutionEvent(event)) break;
+        firstTokenStartedAtRef.current = Date.now();
         const id = event.toolCallId as string;
         onToolEnd?.(event.toolName as string);
         setActiveToolResults((prev) => {
@@ -1761,6 +1814,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     agentRunningRef.current = true;
     setAgentRunning(true);
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });
+    firstTokenSecondsRef.current = null;
+    firstTokenStartedAtRef.current = Date.now();
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
     setPromptAnchorActive(true);

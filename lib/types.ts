@@ -80,6 +80,7 @@ export interface AssistantMessage {
   timestamp?: number;
   /** From `timestamp` until the response ended, measured by pi (pi 1.1); absent for older messages. */
   durationMs?: number;
+  firstTokenSeconds?: number;
   usage?: AgentUsage;
 }
 

@@ -116,6 +116,9 @@ test("only completed assistant messages trigger an immediate usage read", () => 
       agentRunningRef: { current: true }, sessionIdRef: { current: "a" }, optimisticUserMessageKeyRef: { current: null },
       isSystemMessageEvent: (event) => event.message.role === "system",
       normalizeToolCalls: (message) => message, userMessageKey: () => "user", setMessages() {}, dispatch() {}, setAgentPhase() {},
+      // Fork (TTFT) helpers referenced by the message_end case above.
+      hasModelOutput: () => true, firstTokenKey: () => null,
+      firstTokenSecondsRef: { current: null }, firstTokenSecondsByMessageRef: { current: new Map() }, firstTokenStartedAtRef: { current: null },
       refreshContextUsage: (sid) => reads.push(sid),
     });
     assert.deepEqual(reads, role === "assistant" ? ["a"] : []);

@@ -383,7 +383,7 @@ export const enLocale: LocalePlugin = {
     "chat.askInNewChat": "Ask in new chat",
     "chat.newQuoteChat": "New chat about selected text",
     "chat.quoteIntro": "About this passage:",
-    "chat.quoteQuestion": "My question:",
+    "chat.quoteQuestion": "Me:",
     "chat.quoteForkFailed": "Unable to create a branch from this message.",
     "chat.attachImage": "Attach image",
     "chat.previewImage": "Preview image",

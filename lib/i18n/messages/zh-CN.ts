@@ -534,7 +534,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.askInNewChat": "在新对话询问",
     "chat.newQuoteChat": "关于选中文字的新对话",
     "chat.quoteIntro": "关于这段内容：",
-    "chat.quoteQuestion": "我的问题是：",
+    "chat.quoteQuestion": "我：",
     "chat.quoteForkFailed": "无法从这条消息创建分支。",
     "chat.attachFiles": "附加文件",
     "chat.previewImage": "预览图片",

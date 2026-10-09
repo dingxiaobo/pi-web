@@ -12,7 +12,7 @@ import {
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 
 const TITLE_TIMEOUT_MS = 90_000;
-const TITLE_MAX_TOKENS = 256;
+const TITLE_MAX_TOKENS = 1024;
 const MAX_TITLE_LENGTH = 80;
 
 // Per-message caps. A title needs what the user asked for (every user turn,
@@ -65,17 +65,18 @@ export interface TitleRequest {
 }
 
 /**
- * Naming is a short classification task, so thinking only adds latency and
- * tokens: use the cheapest level the model actually supports. Gemini rejects
- * "minimal" and its SDK emits that level when thinking is disabled, so it
- * skips to the next supported level instead.
+ * Fork: naming is a short classification task, so thinking is disabled
+ * outright — the request simply omits the reasoning option. Gemini cannot
+ * express "off" (its SDK emits "minimal" when thinking is disabled, which the
+ * API rejects), so it keeps the cheapest level that actually works.
  */
 export function resolveTitleThinkingLevel(model: Model<Api>): ThinkingLevel {
+  const rejectsMinimal = model.api === "google-generative-ai" || /gemini/i.test(model.id);
+  if (!rejectsMinimal) return "off";
   if (!model.reasoning) return "off";
   // getSupportedThinkingLevels lists levels in ascending cost order.
   const supported = getSupportedThinkingLevels(model);
-  const rejectsMinimal = model.api === "google-generative-ai" || /gemini/i.test(model.id);
-  const usable = rejectsMinimal ? supported.filter((level) => level !== "off" && level !== "minimal") : supported;
+  const usable = supported.filter((level) => level !== "off" && level !== "minimal");
   return usable[0] ?? supported[0] ?? "off";
 }
 

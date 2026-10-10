@@ -337,10 +337,11 @@ a.session-tree-main {
 /* Meta, in the rows' own type: a worktree's branch after its icon. */
 .session-tree-branch {
   flex: none;
-  max-width: 78px;
+  max-width: 20ch;
   overflow: hidden;
-  color: var(--text-dim);
-  font-size: 11px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -632,6 +633,7 @@ a.session-tree-main {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--accent);
 }
 
 /* 5px off the name: the toggle's 3px gap is the chevron's. */

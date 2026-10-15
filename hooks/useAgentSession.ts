@@ -1279,6 +1279,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           agentRunningRef.current = true;
           setAgentRunning(true);
           setAgentPhase(state?.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
+          if (state?.isStreaming) { firstTokenStartedAtRef.current = Date.now(); setFirstTokenStartedAt(firstTokenStartedAtRef.current); }
           return;
         }
 
@@ -1477,6 +1478,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           agentRunningRef.current = true;
           setAgentRunning(true);
           setAgentPhase({ kind: "waiting_model" });
+          firstTokenStartedAtRef.current = Date.now();
+          setFirstTokenStartedAt(firstTokenStartedAtRef.current);
         }
         // Opening the stream is what resumes an idle-reaped session, so the
         // mount's state read may have found no runtime and no usage to show.
@@ -1489,6 +1492,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         agentRunningRef.current = true;
         setAgentRunning(true);
         setAgentPhase({ kind: "waiting_model" });
+        // Start the TTFT clock for this turn (also covers later turns after tool calls).
+        firstTokenStartedAtRef.current = Date.now();
+        setFirstTokenStartedAt(firstTokenStartedAtRef.current);
         // A retry's wait is over once its run starts, as pi's TUI shows it: the
         // successful auto_retry_end comes only with the retry's first complete
         // reply, which can stream for minutes.
@@ -1654,6 +1660,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           }
         }
         dispatch({ type: "end" });
+        // Restart the TTFT clock: the model may produce another turn after this.
+        firstTokenStartedAtRef.current = Date.now();
+        setFirstTokenStartedAt(firstTokenStartedAtRef.current);
         setAgentPhase({ kind: "waiting_model" });
         break;
       }
@@ -2616,6 +2625,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             agentRunningRef.current = true;
             setAgentRunning(true);
             setAgentPhase(agentState.state.isStreaming ? { kind: "waiting_model" } : { kind: "running_command" });
+            if (agentState.state.isStreaming) { firstTokenStartedAtRef.current = Date.now(); setFirstTokenStartedAt(firstTokenStartedAtRef.current); }
             dispatch({ type: "resume" });
             if (!agentState.state.isStreaming && agentState.state.isPromptRunning) {
               void waitForPromptSettlement(session.id);

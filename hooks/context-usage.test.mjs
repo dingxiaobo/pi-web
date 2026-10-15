@@ -119,6 +119,7 @@ test("only completed assistant messages trigger an immediate usage read", () => 
       // Fork (TTFT) helpers referenced by the message_end case above.
       hasModelOutput: () => true, firstTokenKey: () => null,
       firstTokenSecondsRef: { current: null }, firstTokenSecondsByMessageRef: { current: new Map() }, firstTokenStartedAtRef: { current: null },
+      setFirstTokenStartedAt() {},
       refreshContextUsage: (sid) => reads.push(sid),
     });
     assert.deepEqual(reads, role === "assistant" ? ["a"] : []);
@@ -134,6 +135,7 @@ test("each event stream connection reads usage, since connecting resumes an idle
       event: { type: "connected", sessionId: sid ?? "pending", isStreaming },
       sessionIdRef: { current: sid }, sdkAgentActiveRef: { current: false }, agentRunningRef: { current: false },
       dispatch() {}, cancelEventStreamGrace() {}, setAgentRunning() {}, setAgentPhase() {},
+      firstTokenStartedAtRef: { current: null }, setFirstTokenStartedAt() {},
       refreshContextUsage: (id) => reads.push(id),
     });
     assert.deepEqual(reads, sid ? [sid] : []);

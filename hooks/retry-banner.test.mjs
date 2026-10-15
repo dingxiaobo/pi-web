@@ -23,6 +23,7 @@ function setup() {
     agentRunningRef: { current: true }, sdkAgentActiveRef: { current: true }, sessionIdRef: { current: null },
     setRetryInfo: (value) => { banner.current = value; },
     cancelEventStreamGrace() {}, setAgentRunning() {}, setAgentPhase() {}, dispatch() {},
+    firstTokenStartedAtRef: { current: null }, setFirstTokenStartedAt() {},
   });
   return { handle: handler.runInContext(context), banner };
 }

@@ -25,4 +25,3 @@ export function useStreamingSelector<T>(store: StreamingStore, select: (state: S
 export const selectIsStreaming = (state: StreamingState) => state.isStreaming;
 export const selectHasStreamingContent = (state: StreamingState) => Boolean(state.streamingMessage?.content.length);
 export const selectStreamingMessage = (state: StreamingState) => state.streamingMessage;
-export const selectStartedAt = (state: StreamingState) => state.startedAt;

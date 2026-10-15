@@ -469,6 +469,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const dispatch = streamingStore.dispatch;
   const firstTokenSecondsRef = useRef<number | null>(null);
   const firstTokenStartedAtRef = useRef<number | null>(null);
+  const [firstTokenStartedAt, setFirstTokenStartedAt] = useState<number | null>(null);
   const firstTokenSecondsByMessageRef = useRef(new Map<string, number>());
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
@@ -1547,6 +1548,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setRetryInfo(null);
     firstTokenSecondsRef.current = null;
     firstTokenStartedAtRef.current = null;
+    setFirstTokenStartedAt(null);
     setActiveToolResults(new Map());
     dispatch({ type: "end" });
     return wasRunning;
@@ -1922,6 +1924,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (msg?.role === "user") break;
           if (msg?.role === "assistant") {
             if (firstTokenStartedAtRef.current === null && firstTokenSecondsRef.current === null) firstTokenStartedAtRef.current = Date.now();
+            setFirstTokenStartedAt(firstTokenStartedAtRef.current);
             if (msg.content.length > 0) captureFirstToken();
             dispatch({ type: "snapshot", message: msg });
             if (msg.content.length > 0) setAgentPhase(null);
@@ -2054,6 +2057,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       case "tool_execution_end": {
         if (isNestedToolExecutionEvent(event)) break;
         firstTokenStartedAtRef.current = Date.now();
+        setFirstTokenStartedAt(firstTokenStartedAtRef.current);
         const id = event.toolCallId as string;
         onToolEnd?.(event.toolName as string);
         setActiveToolResults((prev) => {
@@ -2168,6 +2172,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     setAgentPhase(isSlashCommandPrompt ? { kind: "running_command" } : { kind: "waiting_model" });
     firstTokenSecondsRef.current = null;
     firstTokenStartedAtRef.current = Date.now();
+    setFirstTokenStartedAt(firstTokenStartedAtRef.current);
     dispatch({ type: "start" });
     pendingScrollToUserRef.current = true;
     setPromptAnchorActive(true);
@@ -3391,7 +3396,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
+    data, loading, error, activeLeafId, messages, activeToolResults, entryIds, messageKeys, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore, firstTokenStartedAt,
     agentRunning, modelNames, modelList, modelError, missingCwd, modelScopeWarnings, isModelScopeActive, allModelList, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats, autoCompactionEnabled,

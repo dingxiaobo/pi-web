@@ -23,7 +23,7 @@ import { useI18n } from "@/hooks/useI18n";
 import { phaseLabel } from "@/lib/chat-phase-label";
 import { formatFirstTokenDuration } from "@/lib/first-token-format";
 import { useAgentSession, type AgentEndInfo, type NewSessionChoices, type NoticeItem } from "@/hooks/useAgentSession";
-import { selectHasStreamingContent, selectIsStreaming, selectStartedAt, selectStreamingMessage, useStreamingSelector } from "@/hooks/useStreamingSelector";
+import { selectHasStreamingContent, selectIsStreaming, selectStreamingMessage, useStreamingSelector } from "@/hooks/useStreamingSelector";
 import type { StreamingStore } from "@/lib/streaming-message";
 import { useDragDrop } from "@/hooks/useDragDrop";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -284,7 +284,7 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   const [restoreAnchorReady, setRestoreAnchorReady] = useState(false);
 
   const {
-    loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore,
+    loading, error, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, earlierTurnCount, streamingStore, firstTokenStartedAt,
     agentRunning, bashRunning, pendingBash, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, toolPreset, thinkingLevel,
     retryInfo, contextUsage, forkingEntryId,
     isCompacting, compactError, compactResult, displayModel: displayModelValue, modelSwitching, sessionStats,
@@ -317,7 +317,6 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
   // re-render StreamingReply alone.
   const isStreaming = useStreamingSelector(streamingStore, selectIsStreaming);
   const hasStreamingContent = useStreamingSelector(streamingStore, selectHasStreamingContent);
-  const startedAt = useStreamingSelector(streamingStore, selectStartedAt);
   const getStreamingMessage = useCallback(() => streamingStore.getState().streamingMessage, [streamingStore]);
   const sessionBusy = agentRunning || bashRunning;
   // While this session's run is under way its chime may come with the phone
@@ -1313,10 +1312,10 @@ export function ChatWindow({ session, searchTarget, onSearchTargetHandled, initi
             {agentRunning && !hasStreamingContent && (agentPhase || isCompacting) && (
               <div className="break-words py-2 text-[13px] text-text-muted">
                 <span className="animate-[pulse_1.5s_infinite]">{phaseLabel(agentPhase, t, isCompacting)}</span>
-                {agentPhase?.kind === "waiting_model" && startedAt !== null && (
+                {agentPhase?.kind === "waiting_model" && firstTokenStartedAt !== null && (
                   <>
                     <span> · </span>
-                    <WaitingFirstTokenTimer startedAt={startedAt} />
+                    <WaitingFirstTokenTimer startedAt={firstTokenStartedAt as number} />
                   </>
                 )}
               </div>

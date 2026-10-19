@@ -14,11 +14,12 @@
  * that narrows the tree's rows to the project in use.
  *
  * The narrowing keeps the picked project's group header, its session rows,
- * its "show more" and its empty note, plus the tree's global footer links
- * (open another project, the archive). Pinned rows are dropped: they render
- * in the pinned section above every group, which is not part of a project.
- * A null key (no project picked yet) keeps just the footer links; the
- * filter's own switch and the file browser are the way forward then.
+ * its "show more" and its empty note, plus the list's top gap and the tree's
+ * global footer links (open another project, the archive). Pinned rows are
+ * dropped: they render in the pinned section above every group, which is not
+ * part of a project.
+ * A null key (no project picked yet) keeps just the top gap and the footer
+ * links; the filter's own switch and the file browser are the way forward then.
  */
 
 import { useSyncExternalStore } from "react";
@@ -129,7 +130,11 @@ export function filterRowsByProject(rows: readonly SidebarRow[], projectKey: str
       case "group-more":
         return row.projectKey === projectKey;
       case "spacer":
-        return row.key === "footer-spacer";
+        // The list's top gap opens the filtered tree too (#1338); the gap a
+        // project's own spacer adds before its group would only push that
+        // group down from the top of an otherwise single-group list, so a
+        // "group-spacer:<key>" is dropped with the pinned section's.
+        return row.key === "top-spacer" || row.key === "footer-spacer";
       case "footer-open":
       case "footer-archived":
         return true;

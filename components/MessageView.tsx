@@ -981,8 +981,6 @@ function AssistantMessageView({
             ].filter(Boolean).join(" \u00b7 ")}
           </div>
         )}
-          </div>
-        )}
         {textContent && !isStreaming && (
           <button
             onClick={copyContent}

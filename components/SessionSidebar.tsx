@@ -6,6 +6,7 @@ import { listSessionFamilies, type SessionFamily, isHiddenRelation } from "@/lib
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { newSessionDeepLink, sessionDeepLink } from "@/lib/session-links";
 import { getProjectActivity, getRecentProjects } from "@/lib/project-groups";
+import { filterRowsByProject, useProjectFilterMode } from "@/lib/project-filter";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
 import {
   adjacentProjectMove,
@@ -512,6 +513,8 @@ function buttonAnchor(element: HTMLElement, align: "start" | "end"): SidebarMenu
 
 export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSession, controlRef, onNewSessionContextChange, initialSessionId, initialSessionLinked, skipInitialProjectSelection, onInitialRestoreDone, refreshKey, onSessionDeleted, selectedCwd: selectedCwdProp, onCwdChange, onOpenFile, onOpenTerminal, explorerRefreshKey, onExplorerRefresh, onAtMention, onAtMentions, onBackgroundTaskDone, hiddenFinishedSessionIds, onRunningSessionIdsChange, onSessionsChange }: Props) {
   const { t } = useI18n();
+  // The project filter: "on" narrows the tree below to the picked project.
+  const projectFilter = useProjectFilterMode();
   const isMobile = useIsMobile();
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   // Tracked in a ref only: the version is compared against the polled value to
@@ -1479,10 +1482,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     unreadIds: unreadSessionIds,
     selectedSessionId,
     currentProject,
-    groupExpansion: shownGroupExpansion,
+    // A filtered tree always shows its own group: the saved fold memory
+    // belongs to the unfiltered tree around it.
+    groupExpansion: projectFilter === "on"
+      ? (currentProjectKey ? { [currentProjectKey]: true } : {})
+      : shownGroupExpansion,
     moreShown,
     pinnedCollapsed,
-  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, shownGroupExpansion, moreShown, pinnedCollapsed]);
+  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, currentProjectKey, projectFilter, shownGroupExpansion, moreShown, pinnedCollapsed]);
   // Built while the archive view is rendered, its way out included: it
   // leaves as it was, not empty.
   const archiveMounted = archiveMotion.archiveMounted;
@@ -1583,10 +1590,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // shows its first rows only.
   const saveGroupChoices = useCallback((next: Readonly<Record<string, boolean>>, keys: readonly string[] | null) => {
     setGroupExpansion(next);
-    saveGroupExpansion(next);
+    // A filtered tree always shows its group: folds are neither read from
+    // that memory nor saved to it while the filter is on.
+    if (projectFilter !== "on") saveGroupExpansion(next);
     setKeptOpenGroups((kept) => forgetKeptOpenGroups(kept, keys));
     setMoreShown((shown) => forgetShownMoreOfFolded(shown, next, keys));
-  }, []);
+  }, [projectFilter]);
 
   /**
    * The selected tab: focus has somewhere to go when the control it was on is
@@ -2991,7 +3000,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <div className="sidebar-sessions-view" hidden={archiveMotion.mainHidden} inert={archiveMotion.mainInert}>
               <SessionTree
                 {...treeProps}
-                rows={model.rows}
+                rows={projectFilter === "on" ? filterRowsByProject(model.rows, currentProjectKey) : model.rows}
                 emptyLabel={t("sidebar.noSessions")}
                 reveal={treeReveal}
                 onRevealHandled={handleRevealHandled}

@@ -42,16 +42,34 @@ What it does (fail-fast, `set -euo pipefail`):
 
 1. Validates the argument: absolute path, file exists, `.tgz`, name starts
    with `agegr-pi-web-`.
-2. `npm install -g <tgz>` (global prefix `~/app/node24`; the `pi-web` bin
-   link at `~/.local/bin/pi-web` is what the service runs).
-3. `systemctl --user restart pi-web` (user service; the script sets
-   `XDG_RUNTIME_DIR` so it also works over ssh).
-4. Verifies with `systemctl --user is-active`; on failure it prints the last
-   30 `journalctl --user -u pi-web` lines and exits non-zero — surface those
-   lines to the user.
+2. `npm install -g <tgz>`; the bin path is resolved from `npm prefix -g`
+   (on this machine `~/.local/node/bin/pi-web`).
+3. Restarts pi-web, preferring the systemd user service when it is actually
+   usable:
+   - If `systemctl --user cat pi-web` succeeds (user bus reachable AND the
+     unit exists), it runs `systemctl --user restart pi-web` (the script
+     sets `XDG_RUNTIME_DIR` so it also works over ssh) after killing any
+     pi-web process not owned by the unit (e.g. a leftover from the
+     direct-launch path), so ports don't conflict.
+   - Otherwise (e.g. user `dxb` has no systemd user instance on this box),
+     it kills the running pi-web process — matched precisely on the bin
+     path, so other users' pi-web instances are untouched — with SIGTERM
+     (SIGKILL after ~10s), then relaunches detached:
+     `nohup <bin> -H 0.0.0.0 --no-open`, appending to
+     `~/.local/state/pi-web.log`.
+4. Verifies the result (`systemctl --user is-active`, or the new PID still
+   being alive); on failure it prints the last 30 log lines (`journalctl
+   --user -u pi-web` for the systemd path, the log file otherwise) and
+   exits non-zero — surface those lines to the user.
+
+If `~/.config/pi-web/env` exists, the script sources and exports it
+(`set -a`) before restarting — machine-local settings such as
+`PI_WEB_ALLOWED_HOSTS` stay out of the repo. On the systemd path the
+`PI_WEB_*` variables are also imported into the user manager via
+`systemctl --user import-environment`.
 
 After success, report the installed version (`npm ls -g @agegr/pi-web
---depth=0`) and the service status line the script prints.
+--depth=0`) and the status line the script prints.
 
 ## Deploy server
 
@@ -91,6 +109,11 @@ tarball is published to the server.
 
 ## Notes
 
+- Locally, pi-web is registered as the `dxb` systemd user service
+  `~/.config/systemd/user/pi-web.service` (linger enabled; the unit reads
+  `~/.config/pi-web/env` via `EnvironmentFile=`). The direct nohup path in
+  deploy-to-local.sh is only the fallback for when no user bus is
+  available.
 - Both scripts are idempotent: re-running re-uploads/re-installs and
   re-points/restarts to the same artifact.
 - Four-part versions (e.g. `0.9.1.2`) are fine for tarball installs but are

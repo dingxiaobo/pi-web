@@ -6,7 +6,8 @@ import { listSessionFamilies, type SessionFamily } from "@/lib/session-family";
 import { dispatchSessionRowContextMenu } from "@/lib/session-row-context-menu";
 import { newSessionDeepLink, sessionDeepLink } from "@/lib/session-links";
 import { getProjectActivity, getRecentProjects } from "@/lib/project-groups";
-import { filterRowsByProject, useProjectFilterMode } from "@/lib/project-filter";
+import { filterArchiveRowsByProject, filterRowsByProject, useProjectFilterMode } from "@/lib/project-filter";
+import { filterSessionsByWorktree, useWorktreeFilterMode } from "@/lib/worktree-filter";
 import { workspaceKeyOf } from "@/lib/workspace-memory";
 import {
   adjacentProjectMove,
@@ -1014,6 +1015,14 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // The project of the sidebar's cwd: the files tab shows it, and its group in
   // the sessions tab exists even before it has a session.
   const selectedProject = useMemo(() => projectFor(selectedCwd), [projectFor, selectedCwd]);
+  // The tree of every project. Its group for the current project exists even
+  // without sessions (a fresh custom path, a new worktree).
+  const currentProjectKey = selectedProject?.key ?? null;
+  const currentProjectRoot = selectedProject?.root ?? null;
+  const currentProject = useMemo(
+    () => (currentProjectKey && currentProjectRoot ? { key: currentProjectKey, root: currentProjectRoot } : null),
+    [currentProjectKey, currentProjectRoot],
+  );
 
   // A worktree/session refresh can hydrate the stable key without changing
   // cwd, so notify when either changes. The parent treats same-cwd key changes
@@ -1303,7 +1312,19 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   const recentProjects = useMemo(() => getRecentProjects(allSessions), [allSessions]);
 
-  const sessionFamilies = useMemo(() => listSessionFamilies(allSessions), [allSessions]);
+  // The worktree filter narrows the current project's sessions to the
+  // worktree in use. It works inside the project filter's scope (the current
+  // project), so it only narrows while that filter is on.
+  const worktreeFilter = useWorktreeFilterMode();
+  const worktreeFilterOn = worktreeFilter === "on" && projectFilter === "on";
+  const worktreeFilteredSessions = useMemo(
+    () => (worktreeFilterOn && currentWorktreePath && currentProjectKey
+      ? filterSessionsByWorktree(allSessions, { projectKey: currentProjectKey, worktreePath: currentWorktreePath })
+      : allSessions),
+    [allSessions, worktreeFilterOn, currentWorktreePath, currentProjectKey],
+  );
+
+  const sessionFamilies = useMemo(() => listSessionFamilies(worktreeFilteredSessions), [worktreeFilteredSessions]);
   const familyByRootId = useMemo(
     () => new Map(sessionFamilies.map((family) => [family.root.id, family])),
     [sessionFamilies],
@@ -1362,14 +1383,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         }
       : null);
 
-  // The tree of every project. Its group for the current project exists even
-  // without sessions (a fresh custom path, a new worktree).
-  const currentProjectKey = selectedProject?.key ?? null;
-  const currentProjectRoot = selectedProject?.root ?? null;
-  const currentProject = useMemo(
-    () => (currentProjectKey && currentProjectRoot ? { key: currentProjectKey, root: currentProjectRoot } : null),
-    [currentProjectKey, currentProjectRoot],
-  );
   // What the tree shows and every toggle reads: the saved choices over the
   // groups kept open for the page. Writes go to the saved choices alone
   // (saveGroupChoices).
@@ -1378,7 +1391,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     [groupExpansion, keptOpenGroups],
   );
   const model = useMemo(() => buildSessionTree({
-    sessions: allSessions,
+    sessions: worktreeFilteredSessions,
     uiState,
     runningIds: runningSessionIds,
     awaitingIds: awaitingInputSessionIds,
@@ -1392,21 +1405,31 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       : shownGroupExpansion,
     moreShown,
     pinnedCollapsed,
-  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, currentProjectKey, projectFilter, shownGroupExpansion, moreShown, pinnedCollapsed]);
+  }), [worktreeFilteredSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, currentProjectKey, projectFilter, shownGroupExpansion, moreShown, pinnedCollapsed]);
+  // The archive follows the project filter: the picked project's archived
+  // families are what the footer link counts and what the archive lists.
+  const filteredArchivedCount = projectFilter === "on"
+    ? (currentProjectKey ? archiveIndex.countByProject.get(currentProjectKey) ?? 0 : 0)
+    : null;
   // Built while the archive view is rendered, its way out included: it
   // leaves as it was, not empty.
   const archiveMounted = archiveMotion.archiveMounted;
   const archiveCollapsedSet = useMemo(() => new Set(archiveCollapsed), [archiveCollapsed]);
-  const archiveRows = useMemo(() => (archiveMounted ? buildArchiveRows({
-    sessions: allSessions,
-    uiState,
-    runningIds: runningSessionIds,
-    awaitingIds: awaitingInputSessionIds,
-    unreadIds: unreadSessionIds,
-    selectedSessionId,
-    currentProject,
-    collapsed: archiveCollapsedSet,
-  }) : []), [archiveMounted, allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, archiveCollapsedSet]);
+  const archiveRows = useMemo(() => {
+    if (!archiveMounted) return [];
+    const rows = buildArchiveRows({
+      sessions: worktreeFilteredSessions,
+      uiState,
+      runningIds: runningSessionIds,
+      awaitingIds: awaitingInputSessionIds,
+      unreadIds: unreadSessionIds,
+      selectedSessionId,
+      currentProject,
+      collapsed: archiveCollapsedSet,
+    });
+    // A filtered archive lists the picked project's archived sessions only.
+    return projectFilter === "on" ? filterArchiveRowsByProject(rows, currentProjectKey) : rows;
+  }, [archiveMounted, worktreeFilteredSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, archiveCollapsedSet, projectFilter, currentProjectKey]);
   // The archive's projects, top to bottom, folded or not.
   const archiveGroups = useMemo(
     () => archiveRows.flatMap((row) => (row.kind === "archive-group" ? [row] : [])),
@@ -1975,13 +1998,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [confirmDeleteRootId, loadSessions, openRowMenu, renamingRootId]);
 
   const treeSelectionInput = useMemo(() => ({
-    sessions: allSessions,
+    sessions: worktreeFilteredSessions,
     uiState,
     runningIds: runningSessionIds,
     awaitingIds: awaitingInputSessionIds,
     unreadIds: unreadSessionIds,
     selectedSessionId,
-  }), [allSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId]);
+  }), [worktreeFilteredSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId]);
 
   const handleGroupMenu = useCallback((project: SidebarProject, opener: HTMLElement) => {
     const olderCount = familiesToArchive(treeSelectionInput, project.key, ARCHIVE_OLDER_THAN_MS, Date.now()).length;
@@ -2070,10 +2093,17 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     });
   }, []);
 
-  const archiveDeleteIds = useCallback((scope: ArchiveDeleteScope | { projectKey: string }) => archivedFamilyIds(
-    treeSelectionInput,
-    scope === "all" ? {} : scope === "old" ? { archivedBefore: Date.now() - ARCHIVED_DELETE_AFTER_MS } : scope,
-  ), [treeSelectionInput]);
+  // A filtered archive's bulk actions take the picked project's archived
+  // sessions only: what the bar's menu offers is what the list shows.
+  const archiveDeleteIds = useCallback((scope: ArchiveDeleteScope | { projectKey: string }) => {
+    const picked = projectFilter === "on" && currentProjectKey ? { projectKey: currentProjectKey } : {};
+    return archivedFamilyIds(
+      treeSelectionInput,
+      typeof scope === "string"
+        ? (scope === "old" ? { archivedBefore: Date.now() - ARCHIVED_DELETE_AFTER_MS, ...picked } : picked)
+        : scope,
+    );
+  }, [treeSelectionInput, projectFilter, currentProjectKey]);
 
   const deleteArchived = useCallback((scope: ArchiveDeleteScope | { projectKey: string }) => {
     const ids = archiveDeleteIds(scope);
@@ -2605,7 +2635,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     ? ["below", t("sidebar.new")]
     : ["tabs", t("sidebar.tabSessions"), t("sidebar.tabFiles"), t("sidebar.new"), explorerCwd && changesCount > 0 ? changesCount : "", sidebarTab]
   ).join("\n"));
-  const archivedCount = model.archivedCount;
+  const archivedCount = filteredArchivedCount ?? model.archivedCount;
 
   // The files' keys: below the sessions in the files section's header row,
   // in the files tab in the row under the picker. Always the same ones in
@@ -2863,7 +2893,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
             <div className="sidebar-sessions-view" hidden={archiveMotion.mainHidden} inert={archiveMotion.mainInert}>
               <SessionTree
                 {...treeProps}
-                rows={projectFilter === "on" ? filterRowsByProject(model.rows, currentProjectKey) : model.rows}
+                rows={projectFilter === "on" ? filterRowsByProject(model.rows, currentProjectKey, filteredArchivedCount ?? 0) : model.rows}
                 emptyLabel={t("sidebar.noSessions")}
                 reveal={treeReveal}
                 onRevealHandled={handleRevealHandled}

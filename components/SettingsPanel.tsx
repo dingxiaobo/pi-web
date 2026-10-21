@@ -16,6 +16,7 @@ import {
 import { useEnterSendMode, setEnterSendMode } from "@/hooks/useEnterSendMode";
 import { useFilesPlacement, setFilesPlacement } from "@/hooks/useFilesPlacement";
 import { ProjectFilterSetting } from "./ProjectFilterSetting";
+import { WorktreeFilterSetting } from "./WorktreeFilterSetting";
 import { sendAgentCommand } from "@/lib/agent-client";
 import type { ProjectTrustStatus, ToolSettingsResponse } from "@/lib/api-types";
 import {
@@ -387,6 +388,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         <div className="settings-chat-options">
           {/* The row renders itself and shares the sidebar's live state. */}
           <ProjectFilterSetting />
+          {/* The worktree filter narrows inside the project filter's scope. */}
+          <WorktreeFilterSetting />
           <div
             className="settings-chat-option settings-chat-switch-option"
             role="radiogroup"

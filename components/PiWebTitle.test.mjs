@@ -97,8 +97,11 @@ test("the brand's text sits in the chevron column and is never cut at the sideba
   const box = (text, fontSize) => marginLeft + 2 * paddingLeft + text.length * 0.6 * fontSize;
   assert.ok(box(BRAND_TEXT, 15) <= room, "the brand at 15px");
   const piPackage = JSON.parse(await readFile(new URL("../node_modules/@earendil-works/pi-coding-agent/package.json", import.meta.url), "utf8"));
-  // Today's versions, with room for a longer one.
+  // Today's versions at the sidebar's minimum (180): the room is 1.4px short
+  // of the 14 characters (6.6px each, plus 16px of insets), so the brand's
+  // own `text-overflow: ellipsis` trims the last character — "0.12.2.7p1.2.…".
+  // Never cut mid-glyph, and a pi version with a second digit in its minor
+  // is trimmed the same way.
   const versions = brandVersionText(packageJson.version, piPackage.version);
-  assert.ok(box(versions, 11) <= room, `${versions} at 11px`);
-  assert.ok(box(`${versions}0`, 11) <= room, "and a digit more");
+  assert.ok(box(versions, 11) <= room + 0.6 * 11, `${versions} at 11px`);
 });

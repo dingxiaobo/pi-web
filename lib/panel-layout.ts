@@ -2,10 +2,7 @@ export const MOBILE_MAX_WIDTH = 640;
 export const SPLIT_PANEL_MIN_WIDTH = 960;
 
 export const SIDEBAR_DEFAULT_WIDTH = 260;
-// Fork: 4-part distribution versions (e.g. 0.12.0.1) are longer than
-// upstream's 3-part ones, so the brand's version text needs a little more
-// room at the sidebar's minimum. 180 → 188 keeps it from clipping.
-export const SIDEBAR_MIN_WIDTH = 188;
+export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 480;
 
 export const RIGHT_PANEL_FALLBACK_WIDTH = 560;

@@ -339,7 +339,7 @@ a.session-tree-main {
   flex: none;
   max-width: 20ch;
   overflow: hidden;
-  color: var(--accent);
+  color: var(--text-dim);
   font-family: var(--font-mono);
   font-size: 10px;
   text-overflow: ellipsis;
@@ -633,7 +633,6 @@ a.session-tree-main {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--accent);
 }
 
 /* 5px off the name: the toggle's 3px gap is the chevron's. */

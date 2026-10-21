@@ -13,6 +13,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -25,10 +26,12 @@ import { showSidebarFiles } from "./sidebar.mjs";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 
 // --- Fixtures: three projects, one live session each (project-a the most
-// --- recent), and one archived session in project-c. ---
+// --- recent), one archived session in project-c, and a linked worktree of
+// --- project-a with a session of its own. ---
 
 const agentDir = mkdtempSync(join(tmpdir(), "pi-web-filter-"));
 const projectA = join(agentDir, "project-a");
+const projectAWorktree = join(agentDir, "project-a-wt");
 const projectB = join(agentDir, "project-b");
 const projectC = join(agentDir, "project-c");
 const sessionDir = join(agentDir, "sessions", "filter");
@@ -36,6 +39,18 @@ mkdirSync(projectA);
 mkdirSync(projectB);
 mkdirSync(projectC);
 mkdirSync(sessionDir, { recursive: true });
+
+// project-a is a git checkout with a linked worktree: both belong to the
+// same project, so their sessions share one group in the tree.
+function git(cwd, args) {
+  execFileSync("git", ["-C", cwd, ...args], {
+    stdio: "ignore",
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+  });
+}
+git(projectA, ["init", "-q", "-b", "main"]);
+git(projectA, ["-c", "user.email=filter@example.test", "-c", "user.name=Filter", "commit", "-q", "--allow-empty", "-m", "init"]);
+git(projectA, ["worktree", "add", "-q", "-b", "feature", projectAWorktree]);
 
 function writeSession(id, cwd, text, mtime) {
   const header = { type: "session", version: 3, id, timestamp: "2026-08-23T00:00:00.000Z", cwd };
@@ -49,6 +64,7 @@ writeSession("filter-a", projectA, "filter project a session", new Date("2026-08
 writeSession("filter-b", projectB, "filter project b session", new Date("2026-08-23T00:00:00.000Z"));
 writeSession("filter-c", projectC, "filter project c session", new Date("2026-08-22T00:00:00.000Z"));
 writeSession("filter-c-old", projectC, "filter project c archived session", new Date("2026-08-21T00:00:00.000Z"));
+writeSession("filter-a-wt", projectAWorktree, "filter project a worktree session", new Date("2026-08-23T12:00:00.000Z"));
 
 // project-c's older session is archived, so it is only in the archive view.
 writeFileSync(
@@ -104,7 +120,7 @@ try {
     const response = await fetch(`${base}/api/sessions`, { signal: AbortSignal.timeout(5000) }).catch(() => null);
     if (response?.ok) {
       const { sessions } = await response.json();
-      assert.deepEqual(sessions.map((session) => session.id).sort(), ["filter-a", "filter-b", "filter-c", "filter-c-old"]);
+      assert.deepEqual(sessions.map((session) => session.id).sort(), ["filter-a", "filter-a-wt", "filter-b", "filter-c", "filter-c-old"]);
       break;
     }
     if (Date.now() > deadline) throw new Error(`Server not ready in 300s:\n${serverLog.join("")}`);
@@ -202,6 +218,21 @@ try {
   assert.equal(await page.locator('[data-row-key="footer-archived"]').count(), 0, "project-a still has nothing archived");
   console.log("PASS: the saved filter survives a reload");
 
+  // The worktree filter narrows inside the project filter's scope: the
+  // current worktree's sessions of the current project only.
+  await openGeneralSettings();
+  const worktreeRow = page.getByRole("radiogroup", { name: "Worktree filter" });
+  await worktreeRow.waitFor();
+  assert.equal(await worktreeRow.isVisible(), true, "the worktree filter is offered with the project filter's scope");
+  assert.equal(await worktreeRow.getByRole("radio", { name: "Current worktree", exact: true }).isDisabled(), false, "the worktree filter is available while the project filter is on");
+  await worktreeRow.getByRole("radio", { name: "Current worktree", exact: true }).locator("..").click();
+  await page.keyboard.press("Escape");
+  await groupNames().first().waitFor();
+  assert.equal(await groupNames().count(), 1, "the project filter still holds");
+  await page.getByText("filter project a session").waitFor();
+  assert.equal(await page.getByText("filter project a worktree session").count(), 0, "the other worktree's session is filtered out");
+  console.log("PASS: the worktree filter narrows inside the project filter's scope");
+
   // Settings reads the saved filter and switches it off again.
   await openGeneralSettings();
   await filterCurrent.waitFor();
@@ -211,6 +242,11 @@ try {
   await groupNames().filter({ hasText: "project-b" }).waitFor();
   assert.equal(await groupNames().count(), 3, "every project is back");
   assert.equal(await archiveLink().innerText(), "Archived · 1", "the archive link counts every project again");
+  // Without the project filter there is no scope to narrow: the row is not
+  // offered, and the filter is put away with the scope.
+  await openGeneralSettings();
+  assert.equal(await page.getByRole("radiogroup", { name: "Worktree filter" }).count(), 0, "the worktree filter is not offered without the project filter");
+  assert.equal(await page.evaluate(() => localStorage.getItem("pi-web:worktree-filter")), "off", "the worktree filter is put away with the project filter");
   console.log("PASS: Settings › General switches the filter off again");
 
   assert.deepEqual(errors, [], "no console or server errors along the way");

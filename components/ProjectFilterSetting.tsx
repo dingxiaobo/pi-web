@@ -2,6 +2,7 @@
 
 import { useI18n } from "@/hooks/useI18n";
 import { setProjectFilterMode, useProjectFilterMode } from "@/lib/project-filter";
+import { setWorktreeFilterMode } from "@/lib/worktree-filter";
 
 /**
  * Settings › General's Project filter row, beside the file browser's
@@ -23,7 +24,12 @@ export function ProjectFilterSetting() {
             name="project-filter"
             value="off"
             checked={filterMode === "off"}
-            onChange={() => setProjectFilterMode("off")}
+            onChange={() => {
+              // The worktree filter works inside this filter's scope, so
+              // showing every project puts it away as well.
+              setProjectFilterMode("off");
+              setWorktreeFilterMode("off");
+            }}
             className="sr-only"
           />
           <span className="settings-send-mode-label">{t("sidebar.filterShowAll")}</span>

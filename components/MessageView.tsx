@@ -28,6 +28,8 @@ import { parseStreamingJson } from "@earendil-works/pi-ai/utils/json-parse";
 import { mcpToolLabel, prettyMcpResultText } from "@/lib/mcp-tool-display";
 import { streamRateKey, streamRateStart, streamTokensPerSecond, type StreamRateStart } from "@/lib/stream-token-rate";
 import { formatNoticeTokens, getTranscriptNotices } from "@/lib/transcript-notices";
+import { formatMoney } from "@/lib/money";
+import type { Locale } from "@/lib/i18n/types";
 import { TRANSCRIPT_NOTICE_WARNING_COLOR, transcriptNoticeText } from "@/components/TranscriptNotices";
 import type {
   AgentMessage,
@@ -686,7 +688,7 @@ function AssistantMessageView({
   isCompacting?: boolean;
   compactError?: string | null;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const time = showTimestamp ? formatTime(message.timestamp) : null;
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
@@ -775,7 +777,7 @@ function AssistantMessageView({
     stats.push(formatDurationPart(t("i18n.firstTokenDuration", { duration }), duration));
   }
   if (message.usage) {
-    const usageParts = formatUsage(message.usage);
+    const usageParts = formatUsage(message.usage, locale);
     if (usageParts.length > 0) {
       if (stats.length > 0) stats.push({ text: "·" });
       stats.push(...usageParts);
@@ -1862,7 +1864,7 @@ function PairedResult({ text, isEmpty, isError }: {
 }
 
 function CompactionMessageView({ message }: { message: CustomMessage }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   // Collapsed by default, as in pi's TUI: a summary can run to pages.
   const [expanded, setExpanded] = useState(false);
   const summary = getMessageText(message.content);
@@ -1932,7 +1934,7 @@ function CompactionMessageView({ message }: { message: CustomMessage }) {
               )}
               {costNotice && (
                 <span style={{ display: "block", marginTop: 2, color: TRANSCRIPT_NOTICE_WARNING_COLOR, fontSize: "calc(12px + var(--chat-font-size-offset, 0px))", lineHeight: 1.5 }}>
-                  {transcriptNoticeText(t, costNotice)}
+                  {transcriptNoticeText(t, costNotice, locale)}
                 </span>
               )}
             </span>
@@ -2289,14 +2291,15 @@ function formatUsage(usage: {
   cacheRead: number;
   cacheWrite: number;
   cost: { total: number };
-}): StatPart[] {
-  // pi's TUI footer: ↑1.2k ↓567 R8.9k W12, with its formatTokens().
+}, locale: Locale | string | undefined): StatPart[] {
+  // pi's TUI footer: ↑1.2k ↓567 R8.9k W12, with its formatTokens(). The cost
+  // is shown in the displayed currency (lib/money.ts), yuan for zh-CN.
   const parts: StatPart[] = [];
   if (usage.input) parts.push({ icon: "up", before: "↑", text: formatNoticeTokens(usage.input) });
   if (usage.output) parts.push({ icon: "down", before: "↓", text: formatNoticeTokens(usage.output) });
   if (usage.cacheRead) parts.push({ text: `R${formatNoticeTokens(usage.cacheRead)}` });
   if (usage.cacheWrite) parts.push({ text: `W${formatNoticeTokens(usage.cacheWrite)}` });
-  if (usage.cost?.total) parts.push({ text: `$${usage.cost.total.toFixed(4)}` });
+  if (usage.cost?.total) parts.push({ text: formatMoney(usage.cost.total, locale, 4) });
   return parts;
 }
 

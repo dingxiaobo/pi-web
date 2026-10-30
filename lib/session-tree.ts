@@ -12,13 +12,15 @@
  * (`root.modified`, not `latestModified`: subagent activity alone does not
  * bring it back) or while any member is running.
  *
- * Groups keep the stored project order (`projectOrder`): activity never moves
- * a project that has a place in it. Pinned projects come first, then the
- * rest; in each band the projects without a place come first.
+ * Groups are alphabetical by the name they show, and pinned projects keep
+ * their own band above the others: activity never moves a group, and no
+ * stored order is read (this fork dropped `projectOrder`; the ui state still
+ * parses it so older clients and undo snapshots keep working, it just has no
+ * effect on the tree).
  */
 
 import { listSessionFamilies, type SessionFamily } from "./session-family";
-import { storedProjectName, type ProjectMovePosition, type SessionUiFamilyState, type SessionUiState } from "./session-ui-state-shared";
+import { storedProjectName, type SessionUiFamilyState, type SessionUiState } from "./session-ui-state-shared";
 import type { SessionInfo } from "./types";
 import { workspaceKeyOf } from "./workspace-memory";
 
@@ -94,18 +96,6 @@ export interface SessionTreeModel {
   projects: SidebarProject[];
   /** Archived families across all projects. */
   archivedCount: number;
-  /**
-   * Shown projects without a place in `projectOrder`, per band, top to
-   * bottom: a move saves its band's ones first, so it lands where it was seen.
-   */
-  unorderedKeysByBand: { pinned: string[]; other: string[] };
-  /**
-   * Of those, the ones the sidebar saves on its own, top to bottom: pinned
-   * projects, and projects with a saved (not transient) live family. Not the
-   * current project while it has none, nor a project of transient sessions
-   * only: either may never get a file.
-   */
-  projectKeysToRecord: string[];
 }
 
 type FamilyFlagsInput = Pick<SessionTreeInput, "uiState" | "runningIds" | "awaitingIds" | "unreadIds" | "selectedSessionId">;
@@ -117,12 +107,6 @@ function familyEntry(state: SessionUiState, rootId: string): SessionUiFamilyStat
 
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/** Time value for ordering: newest first, unparsable dates last. */
-function timeOf(value: string): number {
-  const time = Date.parse(value);
-  return Number.isNaN(time) ? -Infinity : time;
 }
 
 /** Descending comparison that is safe for ±Infinity (a - b would give NaN). */
@@ -416,6 +400,17 @@ function moreRowState(total: number, visible: number, revealed: number): { hidde
   return hidden > 0 || canShowLess ? { hidden, canShowLess } : null;
 }
 
+/**
+ * Alphabetical, case-insensitive first ("beta" before "Gamma"), then by the
+ * exact text: no locale data, so no dependence on the ICU build.
+ */
+export function compareProjectNames(a: string, b: string): number {
+  const left = a.toLowerCase();
+  const right = b.toLowerCase();
+  if (left !== right) return left < right ? -1 : 1;
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
 export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   const { uiState, runningIds, currentProject } = input;
   const families = listSessionFamilies(input.sessions);
@@ -425,9 +420,6 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   const pinnedFamilies: SessionFamily[] = [];
   // Insertion order follows family activity (newest first).
   const projectFamilies = new Map<string, SessionFamily[]>();
-  const projectActivity = new Map<string, number>();
-  // Projects with a live family that has a file (pinned families included).
-  const savedKeys = new Set<string>();
 
   for (const family of families) {
     if (isFamilyArchived(family, uiState, runningIds)) {
@@ -436,9 +428,6 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     }
     resolver.noteFamily(family);
     const key = familyProjectKey(family);
-    const activity = timeOf(family.latestModified);
-    projectActivity.set(key, Math.max(projectActivity.get(key) ?? -Infinity, activity));
-    if (!family.root.transient) savedKeys.add(key);
     if (isFamilyPinned(family, uiState, runningIds)) {
       pinnedFamilies.push(family);
       continue;
@@ -483,42 +472,15 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   for (const key of Object.keys(uiState.projects)) addKey(key);
 
   const projects = projectKeys.map((key) => resolver.get(key));
-  // A Map: a stored key such as "constructor" must not find a prototype member.
-  const rank = new Map<string, number>();
-  (uiState.projectOrder ?? []).forEach((key, index) => {
-    if (!rank.has(key)) rank.set(key, index);
-  });
-  const recordable = (project: SidebarProject) => project.pinned || savedKeys.has(project.key);
-  // Projects without a place come first, in the fallback order, the ones that
-  // are not saved on their own (transient only, the empty current project)
-  // before the others: saving those then changes nothing on screen.
-  type Indexed = { project: SidebarProject; index: number };
-  const orderBand = (band: Indexed[], fallback: (a: Indexed, b: Indexed) => number): SidebarProject[] => [
-    ...band
-      .filter(({ project }) => !rank.has(project.key))
-      .sort((a, b) => Number(recordable(a.project)) - Number(recordable(b.project)) || fallback(a, b)),
-    ...band
-      .filter(({ project }) => rank.has(project.key))
-      .sort((a, b) => (rank.get(a.project.key) ?? 0) - (rank.get(b.project.key) ?? 0)),
-  ].map(({ project }) => project);
-  const activityOf = (project: SidebarProject) => projectActivity.get(project.key)
-    ?? (project.current ? Infinity : -Infinity);
-  const projectPinnedAt = (project: SidebarProject) => finiteNumber(uiState.projects[project.key]?.pinnedAt) ?? 0;
-  const indexed = projects.map((project, index) => ({ project, index }));
-  const pinnedProjects = orderBand(
-    indexed.filter(({ project }) => project.pinned),
-    (a, b) => compareDesc(projectPinnedAt(b.project), projectPinnedAt(a.project)) || a.index - b.index,
-  );
-  const otherProjects = orderBand(
-    indexed.filter(({ project }) => !project.pinned),
-    (a, b) => compareDesc(activityOf(a.project), activityOf(b.project)) || a.index - b.index,
-  );
-  const orderedProjects = [...pinnedProjects, ...otherProjects];
-  const unorderedKeys = (band: SidebarProject[]) => band.filter((project) => !rank.has(project.key)).map((project) => project.key);
-  const unorderedKeysByBand = { pinned: unorderedKeys(pinnedProjects), other: unorderedKeys(otherProjects) };
-  const projectKeysToRecord = orderedProjects
-    .filter((project) => !rank.has(project.key) && recordable(project))
-    .map((project) => project.key);
+  // Alphabetical, by the name a group shows (its saved name, else its folder),
+  // then by key so two projects sharing a name keep one order; pinned projects
+  // stay in their band above the rest. No stored order, and activity never
+  // moves a group.
+  const byName = (a: SidebarProject, b: SidebarProject) => compareProjectNames(a.name, b.name) || compareProjectNames(a.key, b.key);
+  const orderedProjects = [
+    ...projects.filter((project) => project.pinned).sort(byName),
+    ...projects.filter((project) => !project.pinned).sort(byName),
+  ];
 
   for (const [index, project] of orderedProjects.entries()) {
     // A gap between two groups, open or folded (#1338): headers right on the
@@ -547,21 +509,7 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
   rows.push({ kind: "footer-open", key: "footer-open" });
   if (archivedCount > 0) rows.push({ kind: "footer-archived", key: "footer-archived", count: archivedCount });
 
-  return { rows, projects: orderedProjects, archivedCount, unorderedKeysByBand, projectKeysToRecord };
-}
-
-/**
- * The next `projectKeysToRecord` the sidebar saves on its own, at most `limit`,
- * taken from the bottom up. Saved keys go in front of the list and render right
- * below the unsaved ones, so each batch lands where it already shows and the
- * unsaved keys above it stay above it. A key sent before but still unsaved
- * (refused, or no room left) ends the batch: a key saved above it would drop
- * below it.
- */
-export function nextProjectKeysToRecord(toRecord: readonly string[], sent: ReadonlySet<string>, limit: number): string[] {
-  let first = toRecord.length;
-  while (first > 0 && toRecord.length - first < limit && !sent.has(toRecord[first - 1])) first--;
-  return toRecord.slice(first);
+  return { rows, projects: orderedProjects, archivedCount };
 }
 
 /**
@@ -694,171 +642,6 @@ export function getRowOffsets(rows: readonly SidebarRow[], layout: SidebarLayout
     offsets[index + 1] = offsets[index] + heights[rows[index].kind];
   }
   return offsets;
-}
-
-/**
- * One project group as it is laid out: from its header row to the bottom of
- * its last row (its sessions, "show more", the empty note). `gapAbove` and
- * `gapBelow` are the spacer rows that part it from what is next to it: the
- * pinned section above the first, another group, the footer below the last.
- * Two neighbours share the spacer between them.
- */
-export interface GroupBlock { key: string; pinned: boolean; top: number; bottom: number; gapAbove: number; gapBelow: number }
-
-/** A row that belongs to the group above it. */
-function isGroupMemberRow(row: SidebarRow): boolean {
-  return row.kind === "group-more" || row.kind === "group-empty" || (row.kind === "session" && row.context === "group");
-}
-
-/** The group blocks of `rows`, top to bottom. */
-export function groupBlocks(rows: readonly SidebarRow[], offsets: readonly number[]): GroupBlock[] {
-  const blocks: GroupBlock[] = [];
-  let index = 0;
-  while (index < rows.length) {
-    const row = rows[index];
-    if (row.kind !== "group") {
-      index++;
-      continue;
-    }
-    let above = index;
-    while (above > 0 && rows[above - 1].kind === "spacer") above--;
-    let end = index + 1;
-    while (end < rows.length && isGroupMemberRow(rows[end])) end++;
-    let below = end;
-    while (below < rows.length && rows[below].kind === "spacer") below++;
-    blocks.push({
-      key: row.project.key,
-      pinned: row.project.pinned,
-      top: offsets[index],
-      bottom: offsets[end],
-      gapAbove: offsets[index] - offsets[above],
-      gapBelow: offsets[below] - offsets[end],
-    });
-    index = end;
-  }
-  return blocks;
-}
-
-/** Where a dragged group would go: next to `anchorKey`, with its drop line at `lineY` (content coordinates). */
-export interface GroupDrop { anchorKey: string; position: ProjectMovePosition; lineY: number }
-
-/** The line's 6px dot is centred on it: this low, at the top of the list, it is still whole. */
-const DROP_LINE_MIN_Y = 3;
-
-/**
- * The drop target for a group dragged to content position `y`. Only the
- * dragged group's band counts (a drag never crosses from pinned projects to
- * the others), so a pointer above the band (the pinned section) means its
- * top and one below it (the footer) its bottom. The dragged block goes
- * before the first other block whose middle is below `y`. Null when that is
- * where it already is, or the band has no other group. Works from the rows
- * and offsets alone: collapsed groups, "show more" and rows not mounted
- * count as laid out. The line sits in the middle of the spacer it marks
- * (between two groups, after the pinned section or before the footer), and
- * never so high that its dot leaves the list.
- */
-export function groupDropAt(blocks: readonly GroupBlock[], draggedKey: string, y: number): GroupDrop | null {
-  const dragged = blocks.find((block) => block.key === draggedKey);
-  if (!dragged) return null;
-  const band = blocks.filter((block) => block.pinned === dragged.pinned);
-  const from = band.indexOf(dragged);
-  const others = band.filter((block) => block !== dragged);
-  if (others.length === 0) return null;
-  const to = others.filter((block) => (block.top + block.bottom) / 2 < y).length;
-  if (to === from) return null;
-  const last = others[others.length - 1];
-  const lineY = Math.max(DROP_LINE_MIN_Y, to < others.length ? others[to].top - others[to].gapAbove / 2 : last.bottom + last.gapBelow / 2);
-  return to > 0
-    ? { anchorKey: others[to - 1].key, position: "after", lineY }
-    : { anchorKey: others[0].key, position: "before", lineY };
-}
-
-/**
- * Move up / Move down in a group's menu: the move that swaps `key` with its
- * neighbour in its band (`projects` in group order). Null at the band's edge.
- */
-export function adjacentProjectMove(
-  projects: readonly SidebarProject[],
-  key: string,
-  direction: "up" | "down",
-): { anchorKey: string; position: ProjectMovePosition } | null {
-  const project = projects.find((item) => item.key === key);
-  if (!project) return null;
-  const band = projects.filter((item) => item.pinned === project.pinned);
-  const index = band.indexOf(project);
-  const neighbour = band[direction === "up" ? index - 1 : index + 1];
-  if (!neighbour) return null;
-  return { anchorKey: neighbour.key, position: direction === "up" ? "before" : "after" };
-}
-
-/**
- * Auto-scroll while a group is dragged near an edge of the list (`top` and
- * `bottom` of its box, `clientY` the pointer): up to `maxStep` px a frame,
- * faster the deeper into the `edge` band (at most half the box), at full
- * speed past it; negative scrolls up, 0 outside both bands.
- */
-export function autoScrollDelta(clientY: number, top: number, bottom: number, edge: number, maxStep: number): number {
-  const band = Math.min(edge, (bottom - top) / 2);
-  if (!(band > 0) || !Number.isFinite(clientY)) return 0;
-  const speed = (depth: number) => Math.ceil(maxStep * Math.min(1, depth / band));
-  if (clientY < top + band) return -speed(top + band - clientY);
-  if (clientY > bottom - band) return speed(clientY - (bottom - band));
-  return 0;
-}
-
-/** Where the drag ghost goes; one coordinate space for all (the hook uses the page's). */
-export interface GhostPlacement {
-  pointerY: number;
-  /** The drop line, or null without a drop target. */
-  lineY: number | null;
-  ghostHeight: number;
-  /** Space kept between the ghost and the pointer. */
-  pointerGap: number;
-  /** Space kept between the ghost and the drop line. */
-  lineGap: number;
-  /** The list's visible top. */
-  minTop: number;
-  /** The lowest top that keeps the ghost in the list: its visible bottom less ghostHeight. */
-  maxTop: number;
-}
-
-/**
- * The drag ghost's top while a group is dragged. It follows the pointer, its
- * bottom `pointerGap` above it, and moves only as far as keeping clear of the
- * pointer and the drop line (`lineGap`) and inside the list takes: to the
- * nearest top that does. A line far from the pointer leaves it where it is;
- * a line just above the pointer puts it above the line, or below the pointer
- * when there is no room up there; at the list's top it goes below the
- * pointer, and below the line too when that is just under the pointer. A
- * line outside the visible box is scrolled away and cannot be covered: only
- * the pointer counts, as without a drop target. Only a list too short to
- * hold the ghost clear of both puts it over the pointer (over the line only
- * when no top in the list keeps clear of it), and one shorter than the ghost
- * keeps its top.
- */
-export function ghostTopFor({ pointerY, lineY, ghostHeight, pointerGap, lineGap, minTop, maxTop }: GhostPlacement): number {
-  const bottom = Math.max(minTop, maxTop);
-  const wanted = pointerY - pointerGap - ghostHeight;
-  const line = lineY !== null && lineY >= minTop && lineY <= bottom + ghostHeight ? lineY : null;
-  const inList = (top: number) => top >= minTop && top <= bottom;
-  // Tops at which the ghost comes closer than its gap to the pointer or the line.
-  const nearPointer = (top: number) => top > wanted && top < pointerY + pointerGap;
-  const nearLine = (top: number) => line !== null && top > line - lineGap - ghostHeight && top < line + lineGap;
-  // The nearest top that fits is the one the pointer wants or one at the edge
-  // of what it keeps clear of; on a tie the first listed, above before below.
-  const candidates = line === null
-    ? [wanted, minTop, pointerY + pointerGap, bottom]
-    : [wanted, line - lineGap - ghostHeight, minTop, pointerY + pointerGap, line + lineGap, bottom];
-  const nearest = (fits: (top: number) => boolean): number | null => {
-    let best: number | null = null;
-    for (const top of candidates) {
-      if (fits(top) && (best === null || Math.abs(top - wanted) < Math.abs(best - wanted))) best = top;
-    }
-    return best;
-  };
-  return nearest((top) => inList(top) && !nearPointer(top) && !nearLine(top))
-    ?? nearest((top) => inList(top) && !nearLine(top))
-    ?? Math.min(bottom, Math.max(minTop, wanted));
 }
 
 const UNMEASURED_VIEWPORT_HEIGHT = 600;

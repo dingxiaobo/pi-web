@@ -8,7 +8,6 @@
  * not a media query, so the CSS always matches the heights the rows got.
  */
 .session-tree {
-  /* The drag ghost's box: it sits outside the scroll box (SessionTree). */
   position: relative;
   display: flex;
   flex: 1 1 auto;
@@ -517,10 +516,8 @@ a.session-tree-main {
    the chevron in its column, the name bold in the label color and starting
    where the titles do (the text color for the current project or on hover);
    the toggle fills the row; "+" and ⋯ replace the summary on hover. Same
-   inset box as rows. It can be dragged (hooks/useGroupDrag.ts): a
-   long-press on a phone must not select its text or open the iOS callout.
-   touch-action stays as it is, so a swipe that starts on a header still
-   scrolls the list. */
+   inset box as rows. A header's text is not selectable (its toggle is the
+   target) and a swipe that starts on it still scrolls the list. */
 .session-tree-group {
   right: var(--session-tree-inset-right);
   left: var(--session-tree-inset-left);
@@ -539,80 +536,6 @@ a.session-tree-main {
 /* The project's name field (its menu's Rename…) in place of the header. */
 .session-tree-group.is-renaming {
   padding-left: 4px;
-}
-
-/* Picked up by a long-press, before the finger moves. */
-.session-tree-group.is-drag-armed {
-  background: var(--bg-selected);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-}
-
-/* While a group is dragged: its block dimmed in place, the drop line in the
-   middle of the spacer it marks (between two groups, next to the pinned
-   section or the footer), and a ghost with the project's name next to the pointer, placed
-   clear of the line (hooks/useGroupDrag.ts). */
-.session-tree-drag-source {
-  position: absolute;
-  right: var(--session-tree-inset-right);
-  left: var(--session-tree-inset-left);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--bg-panel) 55%, transparent);
-  pointer-events: none;
-}
-
-.session-tree-drop-line {
-  position: absolute;
-  right: var(--session-tree-inset-right);
-  left: var(--session-tree-inset-left);
-  height: 2px;
-  margin-top: -1px;
-  border-radius: 1px;
-  background: var(--accent);
-  pointer-events: none;
-}
-
-/* A dot at the line's left end marks it as the insertion point. */
-.session-tree-drop-line::before {
-  content: "";
-  position: absolute;
-  top: -2px;
-  left: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-/* A one-line pill, shorter than a header, so it fits above or below the
-   pointer and the line without covering either. Outside the scroll box. */
-.session-tree-drag-ghost {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  box-sizing: border-box;
-  min-width: 0;
-  max-width: 70%;
-  height: 22px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--bg-panel);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  opacity: 0.92;
-  pointer-events: none;
-}
-
-.session-tree.is-group-dragging {
-  cursor: grabbing;
-}
-
-.session-tree.is-group-dragging * {
-  cursor: grabbing;
 }
 
 .session-tree-group-toggle {
@@ -1172,7 +1095,7 @@ a.session-tree-main {
 }
 
 /* A fold or an unfold (only those: .is-files-folding is on the root while
-   one runs, never for a drag, keys, a window resize or a layout switch)
+   one runs, never for keys, a window resize or a layout switch)
    moves the files' height between the separator's and the header row's,
    the sessions growing or shrinking to match, and the toast above them
    with it. The body shows from the start of an unfold and stays, inert,
@@ -1469,10 +1392,6 @@ a.session-tree-main {
 
 .sidebar-icon-down {
   transform: rotate(90deg);
-}
-
-.sidebar-icon-up {
-  transform: rotate(-90deg);
 }
 
 /* Files tab: the folder in use (the stacked project picker's two boxes,

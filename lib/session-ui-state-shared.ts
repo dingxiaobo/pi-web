@@ -45,6 +45,11 @@ export interface SessionUiState {
    * projects no longer shown stay, so a project that comes back takes its old
    * place. Absent while empty.
    */
+  /**
+   * Stored project order. This fork's tree ignores it (its groups are
+   * alphabetical); it is still parsed, written and restored so files, undo
+   * snapshots and other clients' `add-projects` / `move-project` keep working.
+   */
   projectOrder?: string[];
   /**
    * Display names by projectKey, shown instead of the folder name (the group

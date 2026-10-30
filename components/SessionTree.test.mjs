@@ -592,7 +592,7 @@ test("headers lead with their chevron, and every row's text starts in one column
   }
 });
 
-test("group headers draw nothing for a drag while idle", () => {
+test("group headers are plain rows: no drag markup, no draggable attribute", () => {
   // Three groups (the spacers between them render nothing), then the footer.
   const rows = [
     groupRow({}, { key: "/work/a", name: "a", pinned: true }),
@@ -601,21 +601,13 @@ test("group headers draw nothing for a drag while idle", () => {
     { kind: "spacer", key: "footer-spacer" },
     ...footer,
   ];
-  const html = render({ rows, onMoveGroup: noop });
+  const html = render({ rows });
   assert.match(html, /^<div class="session-tree">/);
-  assert.doesNotMatch(html, /session-tree-drag-|session-tree-drop-line|is-group-dragging|is-drag-armed/);
-  // Headers keep their markup: the drag adds listeners, no attributes (and never draggable="true").
+  assert.doesNotMatch(html, /session-tree-drag-|session-tree-drop-line|is-group-dragging|is-drag-armed|draggable/);
   assert.match(rowMarkup(html, "group:/work/b"), /^<div class="session-tree-row session-tree-group is-current" style="top:28px;height:28px" data-row-key="group:\/work\/b">/);
-  assert.doesNotMatch(html, /draggable/);
 });
 
 test("SessionTree.tsx has no RegExp lookbehind (Safari 16.2)", () => {
   assert.doesNotMatch(source, /\(\?<[=!]/, "no RegExp lookbehind (Safari 16.2)");
 });
 
-test("the drag ghost is shorter than a header", () => {
-  // The ghost is a one-line pill shorter than a header (useGroupDrag reads
-  // its height to keep it clear of the pointer and the line).
-  assert.match(cssRule(".session-tree-drag-ghost"), /\n\s*height: 22px;/);
-  assert.ok(22 < SIDEBAR_ROW_HEIGHTS.desktop.group, "shorter than a header");
-});

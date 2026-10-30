@@ -604,8 +604,6 @@ export const enLocale: LocalePlugin = {
     "sidebar.renameProject": "Rename…",
     "sidebar.resetProjectName": "Reset name",
     "sidebar.projectName": "Project name",
-    "sidebar.moveProjectUp": "Move up",
-    "sidebar.moveProjectDown": "Move down",
     "sidebar.archive": "Archive",
     "sidebar.unarchive": "Unarchive",
     "sidebar.restore": "Restore",

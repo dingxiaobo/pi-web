@@ -604,8 +604,6 @@ export const zhCNLocale: LocalePlugin = {
     "sidebar.renameProject": "重命名…",
     "sidebar.resetProjectName": "恢复默认名称",
     "sidebar.projectName": "项目名称",
-    "sidebar.moveProjectUp": "上移",
-    "sidebar.moveProjectDown": "下移",
     "sidebar.archive": "归档",
     "sidebar.unarchive": "取消归档",
     "sidebar.restore": "恢复",

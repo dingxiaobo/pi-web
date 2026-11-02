@@ -13,6 +13,13 @@ import {
 
 const SESSION_UI_STATE_URL = "/api/sessions/ui-state";
 
+/**
+ * Same-origin tabs of this browser hear a landed write at once (only the new
+ * revision; each refetches); the visible-tab revision poll stays for other
+ * devices, which the channel cannot reach.
+ */
+const SESSION_UI_STATE_CHANNEL = "pi-web:session-ui-state";
+
 export interface SessionUiStateApi {
   state: SessionUiState;
   /** True after the first GET settled (success or failure). */
@@ -72,6 +79,15 @@ async function readState(response: Response): Promise<SessionUiState> {
  * replayed on top, so a GET or a write response that lands while other writes
  * are queued never drops their optimistic effect. Writes run one at a time in
  * call order (archive, then undo, stays ordered on the server).
+ *
+ * A tab that adopts a server state the revision moved forward tells this
+ * browser's other tabs through a BroadcastChannel: a background tab never
+ * polls (the running poll is visible-tab only), so without the broadcast its
+ * pins and unread markers stay stale until it is focused. Receivers run the
+ * same path as the poll (`noteRevision`), which keeps its pending-write and
+ * same-revision guards; the sender does not hear itself, and a receiver that
+ * adopts broadcasts in turn only when the revision advanced again, so the
+ * tabs converge instead of echoing.
  */
 export function useSessionUiState(): SessionUiStateApi {
   const [state, setState] = useState<SessionUiState>(emptySessionUiState);
@@ -86,6 +102,14 @@ export function useSessionUiState(): SessionUiStateApi {
   // Bumped by every GET and every adopted write response: older GETs are stale.
   const loadIdRef = useRef(0);
   const refreshInFlightRef = useRef<number | null>(null);
+  const channelRef = useRef<BroadcastChannel | null>(null);
+
+  /** Adopts a server answer, and tells the browser's other tabs when the revision moved forward. */
+  const adoptServerState = useCallback((next: SessionUiState) => {
+    const advanced = next.revision > serverStateRef.current.revision;
+    serverStateRef.current = next;
+    if (advanced) channelRef.current?.postMessage({ revision: next.revision });
+  }, []);
 
   const publish = useCallback(() => {
     let next = serverStateRef.current;
@@ -104,7 +128,7 @@ export function useSessionUiState(): SessionUiStateApi {
       const response = await fetch(SESSION_UI_STATE_URL, { cache: "no-store" });
       const next = await readState(response);
       if (loadId !== loadIdRef.current) return;
-      serverStateRef.current = next;
+      adoptServerState(next);
       publish();
       if (!keepError) setError(null);
       setLoaded(true);
@@ -116,7 +140,7 @@ export function useSessionUiState(): SessionUiStateApi {
     } finally {
       if (refreshInFlightRef.current === loadId) refreshInFlightRef.current = null;
     }
-  }, [publish]);
+  }, [adoptServerState, publish]);
 
   const refresh = useCallback(() => load(false), [load]);
 
@@ -146,7 +170,7 @@ export function useSessionUiState(): SessionUiStateApi {
         const next = await readState(response);
         // Any GET started before this response may predate the write.
         loadIdRef.current++;
-        serverStateRef.current = next;
+        adoptServerState(next);
         setError(null);
         setLoaded(true);
         setSynced(true);
@@ -164,7 +188,7 @@ export function useSessionUiState(): SessionUiStateApi {
     const result = writeChainRef.current.then(run, run);
     writeChainRef.current = result;
     return result;
-  }, [load, publish]);
+  }, [adoptServerState, load, publish]);
 
   const snapshot = useCallback(
     (ids: readonly string[]) => snapshotSessionUiFlags(localStateRef.current, ids),
@@ -174,6 +198,23 @@ export function useSessionUiState(): SessionUiStateApi {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Another tab of this browser adopted a newer state (its own write, or a
+  // poll that picked up another device's): refetch through the poll's path.
+  // BroadcastChannel reaches background tabs, which the poll never does.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const channel = new BroadcastChannel(SESSION_UI_STATE_CHANNEL);
+    channelRef.current = channel;
+    channel.onmessage = (event) => {
+      const revision = (event.data as { revision?: unknown } | null)?.revision;
+      if (typeof revision === "number") noteRevision(revision);
+    };
+    return () => {
+      channel.close();
+      channelRef.current = null;
+    };
+  }, [noteRevision]);
 
   return useMemo(
     () => ({ state, loaded, synced, error, refresh, noteRevision, apply, snapshot }),

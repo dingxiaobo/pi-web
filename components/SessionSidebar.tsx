@@ -647,7 +647,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   // Unread markers live with the pins and archive in the server's ui state
   // (pi-web-session-state.json), keyed by family ROOT id, so every tab and
-  // every device sees the same set.
+  // every device sees the same set. A tab whose write landed broadcasts the
+  // new revision to this browser's other tabs (BroadcastChannel in
+  // useSessionUiState); other devices follow the visible-tab revision poll.
   const unreadSessionIds = useMemo(() => {
     const ids = new Set<string>();
     for (const [id, entry] of Object.entries(uiState.sessions)) {
@@ -904,7 +906,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         setRunningSessionIds((previous) => sameIdsOr(previous, data.runningSessionIds ?? []));
         setAwaitingInputSessionIds((previous) => sameIdsOr(previous, data.awaitingInputSessionIds ?? []));
         setSubagentsActiveSessionIds((previous) => sameIdsOr(previous, data.subagentsActiveSessionIds ?? []));
-        // Pins and archive changed in another window: reload them.
+        // Pins, archive and unread markers changed elsewhere: reload them. Another
+        // device's change waits for this poll (visible tab only); this browser's
+        // other tabs also hear the write's BroadcastChannel at once.
         noteUiRevision(data.sessionUiStateRevision);
         if (data.sessionListVersion !== sessionListVersionRef.current) {
           // Reuse the invalidated cache; forcing a scan would change the version again.

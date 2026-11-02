@@ -20,6 +20,33 @@ globalThis.fetch = async (url, init = {}) => {
   return answer();
 };
 
+// A controllable stand-in for BroadcastChannel: delivery is synchronous, the
+// posted messages are kept for assertions, and a closed channel hears nothing.
+class FakeChannel {
+  static instances = [];
+  name;
+  posted = [];
+  onmessage = null;
+  closed = false;
+  constructor(name) {
+    this.name = name;
+    FakeChannel.instances.push(this);
+  }
+  postMessage(data) {
+    this.posted.push(data);
+    for (const other of FakeChannel.instances) {
+      if (other !== this && !other.closed && other.name === this.name && other.onmessage) {
+        other.onmessage({ data });
+      }
+    }
+  }
+  close() {
+    this.closed = true;
+  }
+}
+globalThis.BroadcastChannel = FakeChannel;
+const liveChannels = () => FakeChannel.instances.filter((channel) => !channel.closed);
+
 const json = (status, body) => () => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const served = (state) => json(200, { state });
 const refused = (status, error) => json(status, { error });
@@ -97,4 +124,48 @@ test("a successful first GET sets loaded and synced together and adopts the serv
   assert.equal(hook.result.synced, true);
   assert.equal(hook.result.error, "busy");
   assert.deepEqual(hook.result.state.projectOrder, ["/b", "/a"]);
+});
+
+test("a state the revision moved forward is broadcast to this browser's other tabs; a refused write is not", async () => {
+  answers.push(served(uiState(2)));
+  const hook = render();
+  await settle(hook);
+  const channel = liveChannels().at(-1);
+  assert.ok(channel, "the hook listens on the channel");
+  assert.equal(channel.name, "pi-web:session-ui-state");
+  assert.deepEqual(channel.posted, [{ revision: 2 }], "the first GET's state is told too");
+
+  // A landed write advances the revision and broadcasts it.
+  answers.push(served(uiState(3, { sessions: { s1: { unreadAt: 5 } } })));
+  await hook.result.apply({ action: "set", ids: ["s1"], unread: true });
+  hook.flush();
+  assert.deepEqual(channel.posted, [{ revision: 2 }, { revision: 3 }]);
+
+  // A refused write adopts nothing: no further broadcast.
+  answers.push(refused(400, "nope"), served(uiState(3, { sessions: { s1: { unreadAt: 5 } } })));
+  assert.equal(await hook.result.apply({ action: "set", ids: ["s1"], unread: false }), false);
+  hook.flush();
+  assert.deepEqual(channel.posted, [{ revision: 2 }, { revision: 3 }]);
+});
+
+test("another tab's broadcast refetches at once; one naming the current revision does not", async () => {
+  answers.push(served(uiState(2)));
+  const hook = render();
+  await settle(hook);
+  const receiver = liveChannels().at(-1);
+
+  // Another tab of this browser writes and broadcasts.
+  const sender = new FakeChannel("pi-web:session-ui-state");
+  answers.push(served(uiState(5, { sessions: { s1: { unreadAt: 7 } } })));
+  sender.postMessage({ revision: 5 });
+  await settle(hook);
+  assert.deepEqual(hook.result.state.sessions, { s1: { unreadAt: 7 } }, "refetched and adopted");
+  assert.deepEqual(requests.map(({ method }) => method), ["GET", "GET"]);
+  assert.deepEqual(receiver.posted, [{ revision: 2 }, { revision: 5 }], "the adopted state is told forward");
+
+  // A broadcast naming the revision this tab already holds is a no-op.
+  sender.postMessage({ revision: 5 });
+  hook.flush();
+  await settle(hook);
+  assert.deepEqual(requests.map(({ method }) => method), ["GET", "GET"]);
 });

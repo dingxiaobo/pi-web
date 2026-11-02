@@ -12,7 +12,7 @@ export function formatCompactCount(value: number): string {
 }
 
 /** $0.12 · <$0.01 (¥ in Simplified Chinese) · null when nothing was billed. */
-export function formatCostShort(cost: number, locale: Locale | string | undefined): string | null {
+export function formatCostShort(cost: number, locale?: Locale | string): string | null {
   return formatMoneyFromCent(cost, locale);
 }
 

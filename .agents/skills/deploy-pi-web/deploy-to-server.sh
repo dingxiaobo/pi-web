@@ -17,8 +17,13 @@
 
 # 先加载用户环境（拿到 STATIC_SSH_DEST / STATIC_SSH_DEST_PORT），再打开严格
 # 模式——顺序不能反：~/.bashrc 里的未定义变量不应触发下面的 set -u。
+# ~/.bashrc 常以 `case $- in *i*) ;; *) return;; esac` 开头，非交互 shell 里
+# source 会直接返回，两个变量拿不到；这时再问一个交互式 bash 要它们。
 # shellcheck disable=SC1091
 source "$HOME/.bashrc" >/dev/null 2>&1 || true
+if [[ -z ${STATIC_SSH_DEST:-} ]]; then
+  eval "$(bash -ic 'declare -p STATIC_SSH_DEST STATIC_SSH_DEST_PORT 2>/dev/null' 2>/dev/null)" || true
+fi
 set -euo pipefail
 
 REMOTE_DIR="/root/app/static"

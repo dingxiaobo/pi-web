@@ -11,6 +11,7 @@ const jiti = createJiti(import.meta.url, {
 const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const {
+  AssistantMessageHeader,
   CompactionSummaryDetails,
   MessageView,
   PatchDiffFiles,
@@ -51,6 +52,39 @@ test("on a narrow phone a message's actions drop their labels and keep their tit
   }
   const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.match(css, /@media \(max-width: 380px\) \{\s*\.message-action-label \{\s*display: none;\s*\}\s*\}/);
+});
+
+test("streaming headers preserve counts and speed without showing empty metrics", () => {
+  const renderHeader = (props) => renderToStaticMarkup(React.createElement(
+    I18nProvider, null, React.createElement(AssistantMessageHeader, { modelName: "Test Model", ...props }),
+  ));
+  for (const props of [{}, { estimatedTokens: 0, tps: 20 }]) {
+    const html = renderHeader(props);
+    assert.match(html, />Test Model<\/span>/);
+    assert.doesNotMatch(html, /t\/s|Estimated token count while streaming/);
+  }
+  const tokensOnly = renderHeader({ estimatedTokens: 100 });
+  assert.match(tokensOnly, />100<\/span>/);
+  assert.doesNotMatch(tokensOnly, /t\/s/);
+  const streaming = renderHeader({ estimatedTokens: 1234567, tps: 12345.6 });
+  assert.match(streaming, />1234567<\/span>/);
+  assert.match(streaming, /12345\.6 t\/s/);
+
+  const message = { role: "assistant", provider: "test", model: "model", content: [{ type: "text", text: "Response" }] };
+  const complete = renderMessage(message);
+  assert.doesNotMatch(complete, /Estimated token count while streaming/);
+  assert.match(renderMessage(message, { isStreaming: true }), /Estimated token count while streaming/);
+});
+
+test("a streaming header keeps the first-token badge until the reply ends", () => {
+  const renderHeader = (props) => renderToStaticMarkup(React.createElement(
+    I18nProvider, null, React.createElement(AssistantMessageHeader, { modelName: "Test Model", ...props }),
+  ));
+  const waiting = renderHeader({ firstTokenSeconds: 2.41 });
+  assert.match(waiting, /TTFT 2\.4s/);
+  assert.doesNotMatch(waiting, /t\/s|Estimated token count while streaming/);
+  assert.match(renderHeader({ firstTokenSeconds: 0.042, estimatedTokens: 12 }), /TTFT 42ms/);
+  assert.doesNotMatch(renderHeader({ firstTokenSeconds: null, estimatedTokens: 12 }), /TTFT/);
 });
 
 test("matches response model aliases and otherwise includes the provider", () => {

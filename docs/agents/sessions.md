@@ -74,6 +74,10 @@ Collapsed by default, as pi's TUI `CompactionSummaryMessageComponent` (#1026): t
 ## Streaming token rate
 The streaming reply's `t/s` counts estimated tokens from when its first ones showed. That start lives in `lib/stream-token-rate.ts`, keyed by the reply (provider, model and request `timestamp`), not in `MessageView`: switching sessions remounts the chat, and a start taken at the remount divided every token streamed so far by a fraction of a second. A reply joined with no record (a reload) counts only the tokens that follow.
 
+The assistant's model/streaming header (`AssistantMessageHeader`, `components/MessageView.tsx`) reserves its line height plus the TPS badge's 2px vertical padding even when metrics are absent. Its numeric fields use tabular digits and minimum widths (six output-token digits, nine characters for the speed badge, `999.9 t/s`), not fixed widths that would clip larger values. The count is left-aligned so the arrow stays next to it, and the badge centers its text: right-aligning either left a gap at small values. Both minimum widths add a pixel for per-glyph rounding at the widest value. `e2e/streaming-metrics.mjs` checks the production component's layout across metric states, fonts and phone widths without a live model; ordinary markup tests cannot catch these shifts.
+
+That header also carries the first-token timer (`TTFT 2.4s`), between the model name and the count: the reply's `streamStartedAt` to the first non-zero estimated token, formatted by `lib/first-token-format.ts`. It is our own addition, kept on the header component so it survives upstream's refactor of that row; a finished reply shows the same value in its stats line, read from the message's `firstTokenSeconds`.
+
 ## Auto-retry banner
 `auto_retry_start` shows "Retrying (n/max)…" above the composer for the backoff wait. The retried run's `agent_start` clears it, as pi's TUI replaces its retry indicator at that run's `turn_start`: pi emits a successful `auto_retry_end` only with the retry's first complete assistant message, minutes into a long reply. `auto_retry_end`, `agent_end` and settling clear it too.
 

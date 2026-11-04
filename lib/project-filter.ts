@@ -15,9 +15,11 @@
  *
  * The narrowing keeps the picked project's group header, its session rows,
  * its "show more" and its empty note, plus the list's top gap and the tree's
- * global footer links (open another project, the archive). Pinned rows are
- * dropped: they render in the pinned section above every group, which is not
- * part of a project. The archive link follows the filter too — it counts, and
+ * global footer links (open another project, the archive). The pinned
+ * section stays above every group: a pinned session is reached from every
+ * project's filtered view, so its rows, header and "show more" are kept
+ * whatever project they came from — the section is not part of a project, so
+ * it never narrows. The archive link follows the filter too — it counts, and
  * opens, the picked project's archived sessions only, and is left out when
  * that project has none.
  * A null key (no project picked yet) keeps just the top gap and the footer
@@ -128,9 +130,15 @@ export function filterRowsByProject(rows: readonly SidebarRow[], projectKey: str
   return rows.flatMap((row): SidebarRow[] => {
     switch (row.kind) {
       case "session":
-        // Pinned rows carry their project but render in the pinned section,
-        // outside any group; the filter keeps a group's own rows.
+        // Pinned rows render in the pinned section, outside any group: kept
+        // whatever project they came from, as the section is. A group's own
+        // rows keep following the picked project.
+        if (row.context === "pinned") return [row];
         return row.context === "group" && row.project.key === projectKey ? [row] : [];
+      case "pinned-header":
+        return [row];
+      case "pinned-more":
+        return [row];
       case "group":
       case "group-empty":
         return row.project.key === projectKey ? [row] : [];
@@ -140,8 +148,9 @@ export function filterRowsByProject(rows: readonly SidebarRow[], projectKey: str
         // The list's top gap opens the filtered tree too (#1338); the gap a
         // project's own spacer adds before its group would only push that
         // group down from the top of an otherwise single-group list, so a
-        // "group-spacer:<key>" is dropped with the pinned section's.
-        return row.key === "top-spacer" || row.key === "footer-spacer" ? [row] : [];
+        // "group-spacer:<key>" is dropped. The pinned section's own gap keeps
+        // it apart from the first group, as it does unfiltered.
+        return row.key === "top-spacer" || row.key === "pinned-spacer" || row.key === "footer-spacer" ? [row] : [];
       case "footer-open":
         return [row];
       case "footer-archived":

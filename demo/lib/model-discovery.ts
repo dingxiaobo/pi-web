@@ -181,7 +181,10 @@ function modelFromValue(value: unknown): DiscoveredModel | null {
   if (!rawId) return null;
   const id = rawId.startsWith("models/") ? rawId.slice("models/".length) : rawId;
   if (!id) return null;
-  const name = cleanString(value.display_name)
+  // magpie_label first (our fork's gateways publish it), display_name and
+  // its spelling next, and `name` only when it is not already the id.
+  const name = cleanString(value.magpie_label)
+    ?? cleanString(value.display_name)
     ?? cleanString(value.displayName)
     ?? (cleanString(value.id) || cleanString(value.model) ? cleanString(value.name) : undefined);
   return { id, ...(name && name !== id ? { name } : {}), ...capabilitiesFromValue(value) };

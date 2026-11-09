@@ -88,6 +88,15 @@ export interface SessionTreeInput {
   /** Families revealed beyond the base limit by "show more", per projectKey or PINNED_MORE_KEY. */
   moreShown: Readonly<Record<string, number>>;
   pinnedCollapsed: boolean;
+  /**
+   * The project whose pins the pinned section lists (the project filter's
+   * picked one); omitted or null lists every project's pins. A key no project
+   * has — the filter on with nothing picked — leaves the section empty. A pin
+   * of another project is then an ordinary family of its own group, which the
+   * filter drops: the pinned counts, "show more" window and the section's
+   * activity describe the picked project alone.
+   */
+  pinnedProjectKey?: string | null;
 }
 
 export interface SessionTreeModel {
@@ -401,6 +410,15 @@ function moreRowState(total: number, visible: number, revealed: number): { hidde
 }
 
 /**
+ * Whether a pinned family's project belongs in the pinned section: every
+ * project's pins when nothing is scoped (the filter is off), else the one
+ * project the section was scoped to.
+ */
+function pinScopeMatches(projectKey: string, scope: string | null | undefined): boolean {
+  return scope === null || scope === undefined || scope === projectKey;
+}
+
+/**
  * Alphabetical, case-insensitive first ("beta" before "Gamma"), then by the
  * exact text: no locale data, so no dependence on the ICU build.
  */
@@ -428,7 +446,7 @@ export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
     }
     resolver.noteFamily(family);
     const key = familyProjectKey(family);
-    if (isFamilyPinned(family, uiState, runningIds)) {
+    if (isFamilyPinned(family, uiState, runningIds) && pinScopeMatches(key, input.pinnedProjectKey)) {
       pinnedFamilies.push(family);
       continue;
     }

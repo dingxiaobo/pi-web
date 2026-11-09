@@ -16,10 +16,11 @@
  * The narrowing keeps the picked project's group header, its session rows,
  * its "show more" and its empty note, plus the list's top gap and the tree's
  * global footer links (open another project, the archive). The pinned
- * section stays above every group: a pinned session is reached from every
- * project's filtered view, so its rows, header and "show more" are kept
- * whatever project they came from — the section is not part of a project, so
- * it never narrows. The archive link follows the filter too — it counts, and
+ * section is the picked project's own: the tree is built with
+ * `pinnedProjectKey`, so another project's pins are not section rows at all
+ * (`buildSessionTree`) and the section's count, activity and "show more"
+ * describe this project alone. Its rows, header and spacer pass through
+ * unchanged here. The archive link follows the filter too — it counts, and
  * opens, the picked project's archived sessions only, and is left out when
  * that project has none.
  * A null key (no project picked yet) keeps just the top gap and the footer
@@ -130,9 +131,8 @@ export function filterRowsByProject(rows: readonly SidebarRow[], projectKey: str
   return rows.flatMap((row): SidebarRow[] => {
     switch (row.kind) {
       case "session":
-        // Pinned rows render in the pinned section, outside any group: kept
-        // whatever project they came from, as the section is. A group's own
-        // rows keep following the picked project.
+        // The pinned section is built from the picked project's pins alone
+        // (pinnedProjectKey), so its rows pass through with the group's own.
         if (row.context === "pinned") return [row];
         return row.context === "group" && row.project.key === projectKey ? [row] : [];
       case "pinned-header":

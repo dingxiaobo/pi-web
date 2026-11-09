@@ -1453,6 +1453,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       : shownGroupExpansion,
     moreShown,
     pinnedCollapsed,
+    // The filter narrows the pinned section too: a pin is shown over the
+    // picked project's groups, not over every project's. Without a picked
+    // project the section is empty, as the filtered tree lists no group.
+    pinnedProjectKey: projectFilter === "on" ? (currentProjectKey ?? "") : null,
   }), [worktreeFilteredSessions, uiState, runningSessionIds, awaitingInputSessionIds, unreadSessionIds, selectedSessionId, currentProject, currentProjectKey, projectFilter, shownGroupExpansion, moreShown, pinnedCollapsed]);
   // The archive follows the project filter: the picked project's archived
   // families are what the footer link counts and what the archive lists.

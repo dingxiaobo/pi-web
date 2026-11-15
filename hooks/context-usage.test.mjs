@@ -120,6 +120,7 @@ test("only completed assistant messages trigger an immediate usage read", () => 
       hasModelOutput: () => true, firstTokenKey: () => null,
       firstTokenSecondsRef: { current: null }, firstTokenSecondsByMessageRef: { current: new Map() }, firstTokenStartedAtRef: { current: null },
       setFirstTokenStartedAt() {},
+      setToolClocks() {}, withoutToolClock: (clocks) => clocks,
       refreshContextUsage: (sid) => reads.push(sid),
     });
     assert.deepEqual(reads, role === "assistant" ? ["a"] : []);
@@ -136,6 +137,7 @@ test("each event stream connection reads usage, since connecting resumes an idle
       sessionIdRef: { current: sid }, sdkAgentActiveRef: { current: false }, agentRunningRef: { current: false },
       dispatch() {}, cancelEventStreamGrace() {}, setAgentRunning() {}, setAgentPhase() {},
       firstTokenStartedAtRef: { current: null }, setFirstTokenStartedAt() {},
+      dispatch() {}, cancelEventStreamGrace() {}, setAgentRunning() {}, setAgentPhase() {}, setToolClocks() {}, endedToolClocks: (clocks) => clocks, NO_TOOL_CLOCKS: new Map(),
       refreshContextUsage: (id) => reads.push(id),
     });
     assert.deepEqual(reads, sid ? [sid] : []);

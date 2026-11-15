@@ -3,6 +3,7 @@
 
 import { formatMoneyFromCent } from "./money";
 import type { Locale } from "./i18n/types";
+import type { TranslationParams } from "./i18n/types";
 
 /** 950 · 18k · 1.2M */
 export function formatCompactCount(value: number): string {
@@ -17,10 +18,11 @@ export function formatCostShort(cost: number, locale?: Locale | string): string 
 }
 
 /** "4 messages · 18k tokens · $0.12": the one line `/session` answers with in a tab, which has no popover. */
-export function formatSessionSummary(stats: { totalMessages: number; tokens: { total: number }; cost: number } | null): string {
-  if (!stats) return "No usage yet";
+export function formatSessionSummary(stats: { totalMessages: number; tokens: { total: number }; cost: number } | null, t: (key: string, params?: TranslationParams) => string): string {
+  if (!stats) return t("session.noUsage");
   const cost = formatCostShort(stats.cost);
-  return [`${stats.totalMessages} messages`, `${formatCompactCount(stats.tokens.total)} tokens`, ...(cost ? [cost] : [])].join(" · ");
+  const summary = t(stats.totalMessages === 1 ? "session.usageSummaryOne" : "session.usageSummary", { messages: stats.totalMessages, tokens: formatCompactCount(stats.tokens.total) });
+  return [summary, ...(cost ? [cost] : [])].join(" · ");
 }
 
 /** 0s · 42s · 3m 5s · 1h 20m */

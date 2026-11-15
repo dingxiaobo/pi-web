@@ -23,6 +23,8 @@ export interface DiscoveredModel {
 
 // Only fields whose meaning does not vary between gateways. `max_tokens` is
 // left out: LiteLLM, for one, fills it with either the input or output limit.
+// `pricing` is read, but only through field names that say their unit
+// (COST_FIELDS): a bare `input` is per million, `prompt` per token.
 const CONTEXT_WINDOW_FIELDS = [
   "context_length", "contextLength", "context_window", "contextWindow",
   "max_model_len", "max_input_tokens", "inputTokenLimit",
@@ -131,6 +133,7 @@ function costFromValue(value: Record<string, unknown>): DiscoveredModelCost | un
   if (cost.input === undefined || cost.output === undefined) return undefined;
   return cost;
 }
+
 
 /**
  * An advertised effort list names pi's own levels, which pi sends as the

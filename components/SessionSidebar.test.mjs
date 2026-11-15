@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import vm from "node:vm";
 import { createJiti } from "jiti";
+import ts from "typescript";
 
 const jiti = createJiti(import.meta.url, { jsx: { runtime: "automatic" }, tsconfigPaths: true });
 const React = await jiti.import("react");
@@ -431,6 +433,51 @@ test("the running poll keeps the same Set while the running ids stay the same", 
   const empty = new Set();
   assert.equal(sameIdsOr(empty, []), empty);
 });
+
+test("a read or a mark in another tab reaches this one: the storage handler adopts that tab's write", async () => {
+  const { parseUnreadMarks, sameMarksOr } = await jiti.import("@/lib/unread-markers.ts");
+  const handler = between("const onStorage = (event: StorageEvent) => {", '\n    window.addEventListener("storage", onStorage);');
+  const code = ts.transpileModule(handler, {
+    compilerOptions: { target: ts.ScriptTarget.ES2020 },
+  }).outputText;
+  const updaters = [];
+  const onStorage = vm.runInNewContext(`${code}\nonStorage`, {
+    UNREAD_SESSIONS_STORAGE_KEY: "pi-web:unread-session-ids",
+    parseUnreadMarks,
+    sameMarksOr,
+    setUnreadMarks: (updater) => updaters.push(updater),
+  });
+  const marks = (entries) => new Map(entries);
+
+  // Another key's write never touches the unread markers.
+  onStorage({ key: "pi-web:terminal-theme", newValue: '{"a":1}' });
+  assert.equal(updaters.length, 0);
+
+  // The other tab read the session: the key (or all of storage) went away.
+  onStorage({ key: "pi-web:unread-session-ids", newValue: null });
+  assert.deepEqual([...updaters.pop()(marks([["a", 1], ["b", 2]]))], []);
+
+  // The other tab wrote a newer set; it replaces this tab's, stale markers and all.
+  onStorage({ key: "pi-web:unread-session-ids", newValue: '{"a":1,"b":2,"c":3}' });
+  assert.deepEqual([...updaters.pop()(marks([["a", 1], ["d", 4]]))], [["a", 1], ["b", 2], ["c", 3]]);
+
+  // The same markers keep the same Map: no re-render, so no echo of the write back.
+  onStorage({ key: "pi-web:unread-session-ids", newValue: '{"a":1}' });
+  const unchanged = marks([["a", 1]]);
+  assert.equal(updaters.pop()(unchanged), unchanged);
+  // A marker's time is part of it: a later mark of the same session is adopted.
+  onStorage({ key: "pi-web:unread-session-ids", newValue: '{"a":5}' });
+  assert.deepEqual([...updaters.pop()(unchanged)], [["a", 5]]);
+
+  // A malformed write means no markers, not a crash.
+  onStorage({ key: "pi-web:unread-session-ids", newValue: "{not json" });
+  assert.deepEqual([...updaters.pop()(marks([["a", 1]]))], []);
+
+  // The listener is registered for the storage event and taken off again.
+  assert.match(source, /window\.addEventListener\("storage", onStorage\);/);
+  assert.match(source, /window\.removeEventListener\("storage", onStorage\);/);
+});
+
 test("the favicon counts sessions that finished while the tab was hidden (#1484)", () => {
   // The rows exclude the selected session ("already looking"), which is false
   // while hidden: the badge takes those ids as a separate prop instead.
@@ -440,4 +487,31 @@ test("the favicon counts sessions that finished while the tab was hidden (#1484)
     source,
     /\}, \[awaitingInputSessionIds, unreadSessionIds, hiddenFinishedSessionIds\]\);/,
   );
+});
+
+test("every way of opening a session reveals its row through one effect keyed on the selected id (#1595)", () => {
+  const effect = between("const mainTreeShown = ", "\n  // Fork (the row menu's F)");
+  // The tree is on the page: its tab (or no tabs), no archive view and no search results over it.
+  assert.match(effect, /\(stacked \|\| sidebarTab === "sessions"\)\s+&& !archiveView\s+&& !\(sessionSearchOpen && sessionSearchQuery\.trim\(\) !== ""\)/);
+  // A new selection is noted once, and revealed once when the tree can show it.
+  assert.match(effect, /if \(selectedSessionId !== openRevealSessionIdRef\.current\) \{/);
+  assert.match(effect, /if \(!sessionId \|\| loading \|\| !uiStateLoaded \|\| !sidebarPrefsRestored \|\| !mainTreeShown\) return;\n    openRevealRef\.current = null;/);
+  assert.match(effect, /locateSessionRow\(\{/);
+  // The folds are back first: the restore sets this flag in the same batch.
+  assert.match(source, /if \(loadShowIgnoredFiles\(\)\) setShowIgnoredFiles\(true\);\n    setSidebarPrefsRestored\(true\);/);
+  // It scrolls only as far as needed and moves focus only where a fork allows it.
+  assert.match(effect, /block: "nearest",/);
+  assert.match(effect, /focus\?\.sessionId === sessionId \? \{ takeFocusFrom: focus\.takeFocusFrom \} : \{\}/);
+  // A fold over the row is opened as the user's own choice would be.
+  assert.match(effect, /savePinnedCollapsed\(false\);/);
+  assert.match(effect, /saveGroupChoices\(next, \[location\.projectKey\]\);/);
+
+  // The fork has no reveal of its own any more: it hands its focus rule to the effect.
+  const fork = callbackBody("openForked");
+  assert.doesNotMatch(fork, /setTreeReveal/);
+  assert.doesNotMatch(fork, /saveGroupChoices/);
+  assert.match(fork, /openRevealFocusRef\.current = \{\s+sessionId: forked\.id,/);
+  // Only the open session's effect asks the main tree for a row: this fork has no
+  // group drag, so no move has a row of its own to reveal.
+  assert.equal(source.match(/\bsetTreeReveal\(\{/g)?.length, 1);
 });

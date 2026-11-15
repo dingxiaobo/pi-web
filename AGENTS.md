@@ -20,7 +20,7 @@ Typecheck: `node_modules/.bin/tsc --noEmit` · Lint: `npm run lint`
 
 ### Upgrading pi
 
-pi's packages up to 1.2.0 depend on each other with `^` ranges (1.3.0 pins them exactly), and the published pi-web's dependencies resolve afresh on install (no lockfile ships). Install every `@earendil-works/*` package the tree holds, the SDK's own dependencies included (`pi-codemode`, `pi-mcp`, `pi-telemetry`, …), with `npm install --save-exact`, so npm reuses those exact versions for the SDK's ranges. `lib/pi-packages.test.mjs` fails on any pi package that is not pinned that way; pi-web 0.12.0 pinned four, and installs after pi 1.2.0 paired pi-coding-agent 1.1.0 with pi-codemode 1.2.0.
+The published pi-web ships no lockfile, so its dependencies resolve afresh on install, and pi up to 1.2.0 linked its own packages with `^` ranges. Install every `@earendil-works/*` package the tree holds, the SDK's own dependencies included (`pi-codemode`, `pi-mcp`, `pi-telemetry`, …), with `npm install --save-exact`, so npm reuses those exact versions for the SDK's ranges. `lib/pi-packages.test.mjs` fails on any pi package that is not pinned that way.
 
 ---
 
@@ -32,28 +32,38 @@ pi's packages up to 1.2.0 depend on each other with `^` ranges (1.3.0 pins them 
 - **Product scope**: a light web wrapper around pi, not an IDE or a platform of its own. Before adding a feature, check the out-of-scope list in [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Extension compatibility (principle)**: extensions written for the pi CLI must behave the same here. Fix display problems in the web client; never add pi-web-only options or fields to the extension API (`ctx.ui.*` options, `extension_ui_request`). pi's TUI (`node_modules/@earendil-works/pi-tui`) is the reference for what an extension asking for something means.
 
+## UI Copy
+
+Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
+
+## Bug Fixes
+
+Fix a bug at its cause, reasoning from first principles and established best practice. Do not patch over the symptom.
+
 ---
 
-## File Map
+## API Routes
+
+Each route's methods and parameters; code elsewhere is found by name (`ls lib components hooks`) and through the topic notes' file lists.
 
 ```
 app/api/
   sessions/route.ts                GET list all sessions
   sessions/[id]/route.ts           GET/PATCH/DELETE a session
-  sessions/[id]/context/route.ts   GET ?leafId=&tail=&before= a page of a leaf's context (tail defaults to 50; before pages upward)
+  sessions/[id]/context/route.ts   GET ?leafId=&tail=&before= a page of a leaf's context (tail defaults to 50; before pages upward; leafId defaults to pi's leaf, named in the reply)
   sessions/[id]/export/route.ts    GET exported HTML
   sessions/[id]/fork/route.ts      POST copy the session's current branch into a new session, or { side: true } a side chat (never starts an AgentSession)
   sessions/delete/route.ts         POST { ids } delete sessions and their subagents (a project's Delete all sessions); running ones kept
   sessions/stats/route.ts          POST { ids } each session's tokens, cost, tool calls, active time (the agent switcher's rows)
   sessions/[id]/state/route.ts     GET live wrapper state while running
-  sessions/ui-state/route.ts       GET/POST sidebar pins, archive, project order and names (set, restore, pin-project, add-projects, move-project, rename-project)
+  sessions/ui-state/route.ts       GET/POST sidebar pins, archive, project order and names, read times (set, restore, pin-project, add-projects, move-project, rename-project, read)
   sessions/[id]/auto-name/route.ts POST generate a session title
   sessions/search/route.ts         GET session search
   agent/new/route.ts               POST { cwd, type: prompt|ensure_session (start only), message?, toolNames?, provider?, modelId?, thinkingLevel? }
   agent/[id]/route.ts              GET state (?systemPrompt=0: without the prompt) | POST any command
   agent/[id]/events/route.ts       GET SSE stream
   agent/[id]/lease/route.ts        POST reset the selected session's idle timer (with or without its stream; never starts one); reply: running, awaitingInput, subagentsActive
-  agent/running/route.ts           GET running + awaiting-input session ids, sidebar pins/archive revision
+  agent/running/route.ts           GET running + awaiting-input session ids, sidebar pins/archive revision, the server's clock
   agent/debug/route.ts             GET ?session= the Debug panel's read-only snapshot: wrappers, streams, subagents, MCP, terminals, file watches
   auth/api-key/[provider]/route.ts POST/DELETE stored provider API key
   auth/login/[provider]/route.ts   GET OAuth/device-code SSE | POST manual code

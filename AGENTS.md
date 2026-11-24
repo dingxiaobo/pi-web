@@ -137,6 +137,7 @@ lib/
   project-filter.ts         the sidebar's project filter: the per-browser choice (pi-web:project-filter) and filterRowsByProject(), the tree's rows narrowed to the picked project
   sidebar-prefs.ts          per-browser sidebar tab, group expand choices, archive folds, pinned-section collapse, files-section fold, changed files as list or tree, folders found outside git
   sidebar-actions.ts        session row menu entries, a project group's name entries and rename request, fork refusal messages, delete-all requests
+  steer-prompt.ts           client-safe: a steer's text goes out under "BTW:\n" (steerPromptText()), commands and follow-ups unchanged
   session-links.ts          same-instance links: a session's (?session=<id>), a fresh composer's (?cwd=<dir>); the plain-click rule the sidebar keeps in the page
   new-session-context.ts    client-safe: what the project/worktree pickers show (project, worktrees, project list), lag-safe contextForCwd, the directory a group's + and Open in new tab use
   normalize.ts              normalizeToolCalls(): file-format vs our toolCall field names

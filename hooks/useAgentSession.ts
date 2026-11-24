@@ -29,6 +29,7 @@ import {
 import { clearDraft, getDraft, holdStoredDraft, parkedNewSessionDraftKey, rekeyDraft, restoreDraftSubmission, setDraft, type ChatDraft } from "@/lib/draft-store";
 import { getPreferredToolPreset, setPreferredToolPreset } from "@/lib/tool-preset-preference";
 import { CONFIGURED_TOOL_PRESET, getPresetFromToolNames, getToolNamesForPreset, type ToolEntry, type ToolPreset } from "@/lib/tool-presets";
+import { steerPromptText } from "@/lib/steer-prompt";
 import type { SessionStatsInfo } from "@/lib/pi-types";
 import { mergeSessionStats, type SessionFileStats } from "@/lib/session-stats";
 import { formatSessionSummary } from "@/lib/session-stats-format";
@@ -3179,7 +3180,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       await sendAgentCommand(sid, {
         type: "prompt",
-        message,
+        // A steer reads as a remark about the run it joins (lib/steer-prompt.ts);
+        // `restore()` above still hands the draft back unprefixed.
+        message: behavior === "steer" ? steerPromptText(message) : message,
         streamingBehavior: behavior,
         ...(piImages?.length ? { images: piImages } : {}),
       });
